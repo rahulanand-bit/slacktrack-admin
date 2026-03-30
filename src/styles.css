@@ -95,6 +95,22 @@ input {
   font-size: 14px;
 }
 
+textarea {
+  border: 1px solid #bed0e6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+select {
+  border: 1px solid #bed0e6;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #fff;
+}
+
 .primary-btn,
 .ghost-btn {
   border-radius: 10px;
@@ -102,6 +118,11 @@ input {
   padding: 10px 14px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.as-link {
+  text-decoration: none;
+  display: inline-block;
 }
 
 .primary-btn {
@@ -127,6 +148,119 @@ input {
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 10px;
+}
+
+.info-box {
+  background: #e5f7ec;
+  color: #1d5f3a;
+  border: 1px solid #bfe7ce;
+  border-radius: 10px;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.inline-field {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.stack-gap {
+  display: grid;
+  gap: 10px;
+}
+
+.action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chip-btn {
+  border: 1px solid #b7cdeb;
+  background: #f4f9ff;
+  color: #143f70;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip-btn.danger {
+  border-color: #f2b3b3;
+  background: #fff1f1;
+  color: #852626;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #1359a5;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+}
+
+.menu-wrap {
+  position: relative;
+}
+
+.menu-popover {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  background: #fff;
+  border: 1px solid #d7e2f0;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(17, 39, 75, 0.12);
+  padding: 8px;
+  min-width: 150px;
+  z-index: 5;
+  display: grid;
+  gap: 4px;
+}
+
+.menu-popover button {
+  border: 1px solid #d9e6f8;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.toggle-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(13, 25, 45, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  padding: 16px;
+}
+
+.modal-card {
+  width: min(560px, 100%);
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #d7e2f0;
+  box-shadow: 0 20px 50px rgba(17, 39, 75, 0.2);
+  padding: 16px;
 }
 
 .grid-cards {
@@ -218,5 +352,9 @@ th {
     position: sticky;
     top: 0;
     z-index: 2;
+  }
+
+  .section-head {
+    align-items: stretch;
   }
 }

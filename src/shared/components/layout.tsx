@@ -1,11 +1,12 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { clearSessionToken } from '../auth/session';
+import { clearSessionToken, hasPermission } from '../auth/session';
 
 const navItems = [
-  { path: '/dashboard', label: 'Dashboard' },
-  { path: '/users', label: 'Users' },
-  { path: '/attendance', label: 'Attendance' },
-  { path: '/settings', label: 'Settings' }
+  { path: '/dashboard', label: 'Dashboard', visible: true },
+  { path: '/users', label: 'Users', visible: hasPermission('users:read') },
+  { path: '/projects', label: 'Projects', visible: hasPermission('projects:read') },
+  { path: '/attendance', label: 'Attendance', visible: hasPermission('attendance:read') },
+  { path: '/settings', label: 'Settings', visible: hasPermission('timers:read') || hasPermission('sync:read') }
 ];
 
 export function AppLayout() {
@@ -21,7 +22,7 @@ export function AppLayout() {
       <aside className="sidebar">
         <h1>SlackTrack Admin</h1>
         <nav>
-          {navItems.map((item) => (
+          {navItems.filter((item) => item.visible).map((item) => (
             <NavLink
               key={item.path}
               to={item.path}

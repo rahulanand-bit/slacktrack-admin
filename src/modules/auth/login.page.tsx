@@ -1,7 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
-import { setSessionToken } from '../../shared/auth/session';
+import { setSessionProfile, setSessionToken } from '../../shared/auth/session';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -18,12 +18,21 @@ export function LoginPage() {
     try {
       const response = await apiClient.post('/api/admin/auth/login', { email, password });
       const token = response.data?.data?.accessToken;
+      const user = response.data?.data?.user;
       if (!token) {
         setError('Login did not return an access token.');
         return;
       }
 
       setSessionToken(token);
+      if (user) {
+        setSessionProfile({
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          permissions: user.permissions
+        });
+      }
       navigate('/dashboard', { replace: true });
     } catch (err) {
       void err;

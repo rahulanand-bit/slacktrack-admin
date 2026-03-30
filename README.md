@@ -12,6 +12,16 @@ docker compose up --build
 
 Open: `http://localhost:5173`
 
+## Run in Production Mode
+
+From `slacktrack-admin/`:
+
+```bash
+VITE_API_BASE_URL=https://your-api-domain docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Open: `http://<server-ip>`
+
 ## Environment
 
 Copy `.env.example` to `.env` if you need to override API URL.
@@ -21,10 +31,12 @@ Copy `.env.example` to `.env` if you need to override API URL.
 ## Current Pages
 
 - Login / Logout
-- Dashboard (basic cards)
+- Dashboard
 - Users (live data from `/api/admin/users`)
-- Attendance (placeholder)
-- Settings (placeholder)
+- Projects (view/add/remove)
+- Attendance (day + monthly + user drill-down + overrides)
+- Settings
+- Timers (inside Settings flow)
 
 ## Backend Requirements
 
