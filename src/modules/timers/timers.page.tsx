@@ -135,8 +135,8 @@ export function TimersPage() {
       <p className="muted">Create timers with simple time input and send manual attendance reminders.</p>
       <DismissibleNotice message={notice} onClose={() => setNotice(null)} />
 
-      <div className="grid-cards">
-        <article className="card">
+      <div className="grid-cards timers-grid">
+        <article className="card timers-config-card">
           <h3>Create Timer</h3>
           <form onSubmit={onCreateTimer} className="stack-gap">
             <label className="inline-field">
@@ -185,7 +185,7 @@ export function TimersPage() {
           </form>
         </article>
 
-        <article className="card table-card">
+        <article className="card table-card timers-manual-card">
           <h3>Send Manual Notifications</h3>
           <p className="muted">Select users manually or send to all pending-attendance users for today.</p>
           <div className="action-row" style={{ marginBottom: 10 }}>
@@ -207,42 +207,44 @@ export function TimersPage() {
             </button>
           </div>
 
-          {attendanceQuery.isLoading ? <p>Loading users...</p> : null}
-          {attendanceRows.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Select</th>
-                  <th>Name</th>
-                  <th>Slack ID</th>
-                  <th>Today Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceRows.map((row) => (
-                  <tr key={row.slackUserId}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={Boolean(selectedUserIds[row.slackUserId])}
-                        onChange={(event) =>
-                          setSelectedUserIds((prev) => ({
-                            ...prev,
-                            [row.slackUserId]: event.target.checked
-                          }))
-                        }
-                      />
-                    </td>
-                    <td>{row.name || '-'}</td>
-                    <td>{row.slackUserId}</td>
-                    <td>{row.status || 'Not marked'}</td>
+          <div className="timers-manual-list">
+            {attendanceQuery.isLoading ? <p>Loading users...</p> : null}
+            {attendanceRows.length ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Select</th>
+                    <th>Name</th>
+                    <th>Slack ID</th>
+                    <th>Today Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            !attendanceQuery.isLoading && <p>No users available.</p>
-          )}
+                </thead>
+                <tbody>
+                  {attendanceRows.map((row) => (
+                    <tr key={row.slackUserId}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(selectedUserIds[row.slackUserId])}
+                          onChange={(event) =>
+                            setSelectedUserIds((prev) => ({
+                              ...prev,
+                              [row.slackUserId]: event.target.checked
+                            }))
+                          }
+                        />
+                      </td>
+                      <td>{row.name || '-'}</td>
+                      <td>{row.slackUserId}</td>
+                      <td>{row.status || 'Not marked'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              !attendanceQuery.isLoading && <p>No users available.</p>
+            )}
+          </div>
         </article>
       </div>
 

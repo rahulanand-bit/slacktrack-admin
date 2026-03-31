@@ -230,45 +230,47 @@ export function AttendancePage() {
           {monthlyQuery.isError ? <p>Could not load monthly attendance.</p> : null}
 
           {monthData?.users?.length ? (
-            <table className="attendance-month-table">
-              <thead>
-                <tr>
-                  <th>User</th>
-                  {monthData.dates.map((dateYmd) => (
-                    <th key={dateYmd} className={nonWorkingDateSet.has(dateYmd) ? 'attendance-nonworking' : undefined}>
-                      <div>{weekdayLabel(dateYmd)}</div>
-                      <div>{dateYmd.slice(8)}</div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {monthData.users.map((user) => (
-                  <tr key={user.slackUserId}>
-                    <td>
-                      <button
-                        type="button"
-                        className="link-btn"
-                        title={user.name || user.slackUserId}
-                        onClick={() =>
-                          navigate(`/attendance/users/${encodeURIComponent(user.slackUserId)}?month=${monthData.month}`)
-                        }
-                      >
-                        {compactUserLabel(user.name, user.slackUserId)}
-                      </button>
-                    </td>
-                    {user.days.map((day) => (
-                      <td
-                        key={day.dateYmd}
-                        className={nonWorkingDateSet.has(day.dateYmd) ? 'attendance-nonworking' : undefined}
-                      >
-                        {day.status || '-'}
-                      </td>
+            <div className="attendance-month-wrap">
+              <table className="attendance-month-table">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    {monthData.dates.map((dateYmd) => (
+                      <th key={dateYmd} className={nonWorkingDateSet.has(dateYmd) ? 'attendance-nonworking' : undefined}>
+                        <div>{weekdayLabel(dateYmd)}</div>
+                        <div>{dateYmd.slice(8)}</div>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {monthData.users.map((user) => (
+                    <tr key={user.slackUserId}>
+                      <td>
+                        <button
+                          type="button"
+                          className="link-btn"
+                          title={user.name || user.slackUserId}
+                          onClick={() =>
+                            navigate(`/attendance/users/${encodeURIComponent(user.slackUserId)}?month=${monthData.month}`)
+                          }
+                        >
+                          {compactUserLabel(user.name, user.slackUserId)}
+                        </button>
+                      </td>
+                      {user.days.map((day) => (
+                        <td
+                          key={day.dateYmd}
+                          className={nonWorkingDateSet.has(day.dateYmd) ? 'attendance-nonworking' : undefined}
+                        >
+                          {day.status || '-'}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             !monthlyQuery.isLoading && <p>No monthly attendance data found.</p>
           )}
