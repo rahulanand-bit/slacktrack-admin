@@ -199,7 +199,30 @@ export function UsersPage() {
           <table>
             <thead>
               <tr>
-                {canWriteUsers ? <th>Select</th> : null}
+                {canWriteUsers ? (
+                  <th>
+                    <label className="toggle-wrap" style={{ margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          if (!checked) {
+                            setSelectedUserIds({});
+                            return;
+                          }
+
+                          const nextSelection: Record<string, boolean> = {};
+                          for (const row of users) {
+                            nextSelection[row.slackUserId] = true;
+                          }
+                          setSelectedUserIds(nextSelection);
+                        }}
+                      />
+                      <span>Select All</span>
+                    </label>
+                  </th>
+                ) : null}
                 <th>Name</th>
                 <th>Slack ID</th>
                 <th>Email</th>
@@ -300,35 +323,6 @@ export function UsersPage() {
                 </tr>
               ))}
             </tbody>
-            {canWriteUsers ? (
-              <tfoot>
-                <tr>
-                  <td>
-                    <label className="toggle-wrap" style={{ margin: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          if (!checked) {
-                            setSelectedUserIds({});
-                            return;
-                          }
-
-                          const nextSelection: Record<string, boolean> = {};
-                          for (const row of users) {
-                            nextSelection[row.slackUserId] = true;
-                          }
-                          setSelectedUserIds(nextSelection);
-                        }}
-                      />
-                      <span>Select All</span>
-                    </label>
-                  </td>
-                  <td colSpan={canWriteUsers ? 5 : 4} />
-                </tr>
-              </tfoot>
-            ) : null}
           </table>
         ) : null}
       </div>
