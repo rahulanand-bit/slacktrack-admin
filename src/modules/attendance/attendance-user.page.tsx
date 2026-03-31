@@ -7,11 +7,25 @@ type UserMonthData = {
   name: string | null;
   email: string | null;
   month: string;
+  nonWorkingDates: string[];
   days: Array<{ dateYmd: string; status: 'WFO' | 'WFH' | '-1' | '-0.5' | null; projects: string[] }>;
+};
+
+type UserProjectAnalytics = {
+  month: string;
+  slackUserId: string;
+  rows: Array<{ projectName: string; daysWorked: number }>;
 };
 
 async function fetchUserMonth(slackUserId: string, month?: string): Promise<UserMonthData> {
   const response = await apiClient.get(`/api/admin/attendance/users/${encodeURIComponent(slackUserId)}/month`, {
+    params: month ? { month } : undefined
+  });
+  return response.data?.data;
+}
+
+async function fetchUserProjectAnalytics(slackUserId: string, month?: string): Promise<UserProjectAnalytics> {
+  const response = await apiClient.get(`/api/admin/analytics/users/${encodeURIComponent(slackUserId)}/projects`, {
     params: month ? { month } : undefined
   });
   return response.data?.data;
@@ -25,6 +39,12 @@ export function AttendanceUserPage() {
   const query = useQuery({
     queryKey: ['attendance-user-month', slackUserId, month],
     queryFn: () => fetchUserMonth(slackUserId, month),
+    enabled: Boolean(slackUserId)
+  });
+
+  const projectAnalyticsQuery = useQuery({
+    queryKey: ['attendance-user-project-analytics', slackUserId, month],
+    queryFn: () => fetchUserProjectAnalytics(slackUserId, month),
     enabled: Boolean(slackUserId)
   });
 
@@ -69,6 +89,32 @@ export function AttendanceUserPage() {
             </table>
           </>
         ) : null}
+      </div>
+
+      <div className="card table-card" style={{ marginTop: 14 }}>
+        <h3>Project-wise Days (WFO/WFH)</h3>
+        {projectAnalyticsQuery.isLoading ? <p>Loading project analytics...</p> : null}
+        {projectAnalyticsQuery.isError ? <p>Could not load project analytics.</p> : null}
+        {projectAnalyticsQuery.data?.rows?.length ? (
+          <table>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Days Worked</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectAnalyticsQuery.data.rows.map((row) => (
+                <tr key={row.projectName}>
+                  <td>{row.projectName}</td>
+                  <td>{row.daysWorked}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          !projectAnalyticsQuery.isLoading && <p>No project analytics found for this month.</p>
+        )}
       </div>
     </section>
   );

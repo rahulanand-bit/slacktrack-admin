@@ -6,6 +6,7 @@ const navItems = [
   { path: '/users', label: 'Users', visible: hasPermission('users:read') },
   { path: '/projects', label: 'Projects', visible: hasPermission('projects:read') },
   { path: '/attendance', label: 'Attendance', visible: hasPermission('attendance:read') },
+  { path: '/analytics', label: 'Analytics', visible: hasPermission('analytics:read') },
   { path: '/settings', label: 'Settings', visible: hasPermission('timers:read') || hasPermission('sync:read') }
 ];
 

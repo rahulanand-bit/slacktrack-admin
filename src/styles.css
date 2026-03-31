@@ -321,6 +321,10 @@ th {
   background: #f6f9ff;
 }
 
+.attendance-nonworking {
+  background: #ffe6ee;
+}
+
 .pill {
   border-radius: 999px;
   display: inline-block;

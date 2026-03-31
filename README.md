@@ -26,7 +26,7 @@ Open: `http://<server-ip>`
 
 Copy `.env.example` to `.env` if you need to override API URL.
 
-- `VITE_API_BASE_URL` defaults to `http://localhost:8080`
+- `VITE_API_BASE_URL` defaults to `/api` (recommended behind reverse proxy)
 
 ## Current Pages
 
@@ -34,7 +34,8 @@ Copy `.env.example` to `.env` if you need to override API URL.
 - Dashboard
 - Users (live data from `/api/admin/users`)
 - Projects (view/add/remove)
-- Attendance (day + monthly + user drill-down + overrides)
+- Attendance (day + monthly + user drill-down + overrides + non-working day highlighting)
+- Analytics (project-wise monthly days worked, WFO/WFH only)
 - Settings
 - Timers (inside Settings flow)
 

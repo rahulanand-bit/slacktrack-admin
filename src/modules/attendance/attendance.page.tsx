@@ -19,6 +19,7 @@ type AttendanceRow = {
 type MonthlyAttendanceResponse = {
   month: string;
   dates: string[];
+  nonWorkingDates: string[];
   users: Array<{
     slackUserId: string;
     name: string | null;
@@ -27,6 +28,11 @@ type MonthlyAttendanceResponse = {
     days: Array<{ dateYmd: string; status: AttendanceStatus | null; projects: string[] }>;
   }>;
 };
+
+function weekdayLabel(dateYmd: string): string {
+  const date = new Date(`${dateYmd}T00:00:00`);
+  return date.toLocaleDateString(undefined, { weekday: 'short' });
+}
 
 function todayYmd(): string {
   return new Date().toISOString().slice(0, 10);
@@ -87,6 +93,7 @@ export function AttendancePage() {
 
   const dayRows = useMemo(() => attendanceQuery.data || [], [attendanceQuery.data]);
   const monthData = monthlyQuery.data;
+  const nonWorkingDateSet = useMemo(() => new Set(monthData?.nonWorkingDates || []), [monthData?.nonWorkingDates]);
   const canOverride = hasPermission('overrides:write');
 
   const triggerOverride = (slackUserId: string, status: AttendanceStatus) => {
@@ -211,7 +218,10 @@ export function AttendancePage() {
                 <tr>
                   <th>User</th>
                   {monthData.dates.map((dateYmd) => (
-                    <th key={dateYmd}>{dateYmd.slice(8)}</th>
+                    <th key={dateYmd} className={nonWorkingDateSet.has(dateYmd) ? 'attendance-nonworking' : undefined}>
+                      <div>{weekdayLabel(dateYmd)}</div>
+                      <div>{dateYmd.slice(8)}</div>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -230,7 +240,12 @@ export function AttendancePage() {
                       </button>
                     </td>
                     {user.days.map((day) => (
-                      <td key={day.dateYmd}>{day.status || '-'}</td>
+                      <td
+                        key={day.dateYmd}
+                        className={nonWorkingDateSet.has(day.dateYmd) ? 'attendance-nonworking' : undefined}
+                      >
+                        {day.status || '-'}
+                      </td>
                     ))}
                   </tr>
                 ))}

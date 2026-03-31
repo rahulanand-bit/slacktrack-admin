@@ -3,6 +3,7 @@ import { LoginPage } from '../modules/auth/login.page';
 import { ForbiddenPage } from '../modules/auth/forbidden.page';
 import { AttendancePage } from '../modules/attendance/attendance.page';
 import { AttendanceUserPage } from '../modules/attendance/attendance-user.page';
+import { AnalyticsPage } from '../modules/analytics/analytics.page';
 import { DashboardPage } from '../modules/dashboard/dashboard.page';
 import { ProjectsPage } from '../modules/projects/projects.page';
 import { SettingsPage } from '../modules/settings/settings.page';
@@ -67,6 +68,14 @@ export const appRouter = createBrowserRouter([
         element: (
           <RequirePermission permission="attendance:read">
             <AttendanceUserPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: '/analytics',
+        element: (
+          <RequirePermission permission="analytics:read">
+            <AnalyticsPage />
           </RequirePermission>
         )
       },
