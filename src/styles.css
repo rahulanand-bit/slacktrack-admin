@@ -286,12 +286,7 @@ select {
 }
 
 .timers-grid {
-  align-items: stretch;
-}
-
-.timers-config-card,
-.timers-manual-card {
-  min-height: 520px;
+  align-items: start;
 }
 
 .timers-manual-card {
@@ -301,9 +296,9 @@ select {
 
 .timers-manual-list {
   margin-top: 8px;
-  overflow: auto;
-  flex: 1;
-  min-height: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  overflow-x: auto;
 }
 
 .stat-card {

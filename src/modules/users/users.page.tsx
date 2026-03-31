@@ -65,6 +65,12 @@ export function UsersPage() {
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: fetchUsers });
   const users = useMemo(() => usersQuery.data || [], [usersQuery.data]);
+  const [selectedUserIds, setSelectedUserIds] = useState<Record<string, boolean>>({});
+  const selectedIds = useMemo(
+    () => Object.entries(selectedUserIds).filter(([, selected]) => selected).map(([slackUserId]) => slackUserId),
+    [selectedUserIds]
+  );
+  const allSelected = users.length > 0 && users.every((user) => Boolean(selectedUserIds[user.slackUserId]));
 
   const [notice, setNotice] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -122,6 +128,18 @@ export function UsersPage() {
     onError: () => setNotice('Failed to update messaging state.')
   });
 
+  const bulkMessagingMutation = useMutation({
+    mutationFn: async ({ slackUserIds, isMessageEnabled }: { slackUserIds: string[]; isMessageEnabled: boolean }) => {
+      await Promise.all(slackUserIds.map((slackUserId) => setMessaging(slackUserId, isMessageEnabled)));
+    },
+    onSuccess: async (_data, variables) => {
+      setNotice(`Messaging ${variables.isMessageEnabled ? 'enabled' : 'disabled'} for ${variables.slackUserIds.length} users.`);
+      setSelectedUserIds({});
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: () => setNotice('Failed to update bulk messaging state.')
+  });
+
   const onCreateSingle = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     singleCreateMutation.mutate({
@@ -148,9 +166,27 @@ export function UsersPage() {
           <p className="muted">Manage recipients, messaging state, and user email metadata.</p>
         </div>
         {canWriteUsers ? (
-          <button type="button" className="primary-btn" onClick={() => setShowAddModal(true)}>
-            Add Users
-          </button>
+          <div className="action-row">
+            <button
+              type="button"
+              className="ghost-btn"
+              disabled={selectedIds.length === 0 || bulkMessagingMutation.isPending}
+              onClick={() => bulkMessagingMutation.mutate({ slackUserIds: selectedIds, isMessageEnabled: true })}
+            >
+              Enable Selected ({selectedIds.length})
+            </button>
+            <button
+              type="button"
+              className="ghost-btn"
+              disabled={selectedIds.length === 0 || bulkMessagingMutation.isPending}
+              onClick={() => bulkMessagingMutation.mutate({ slackUserIds: selectedIds, isMessageEnabled: false })}
+            >
+              Disable Selected ({selectedIds.length})
+            </button>
+            <button type="button" className="primary-btn" onClick={() => setShowAddModal(true)}>
+              Add Users
+            </button>
+          </div>
         ) : null}
       </div>
       <DismissibleNotice message={notice} onClose={() => setNotice(null)} />
@@ -163,6 +199,7 @@ export function UsersPage() {
           <table>
             <thead>
               <tr>
+                {canWriteUsers ? <th>Select</th> : null}
                 <th>Name</th>
                 <th>Slack ID</th>
                 <th>Email</th>
@@ -173,6 +210,20 @@ export function UsersPage() {
             <tbody>
               {users.map((user) => (
                 <tr key={user.id}>
+                  {canWriteUsers ? (
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selectedUserIds[user.slackUserId])}
+                        onChange={(event) =>
+                          setSelectedUserIds((prev) => ({
+                            ...prev,
+                            [user.slackUserId]: event.target.checked
+                          }))
+                        }
+                      />
+                    </td>
+                  ) : null}
                   <td>{user.displayName || '-'}</td>
                   <td>{user.slackUserId}</td>
                   <td>
@@ -249,6 +300,35 @@ export function UsersPage() {
                 </tr>
               ))}
             </tbody>
+            {canWriteUsers ? (
+              <tfoot>
+                <tr>
+                  <td>
+                    <label className="toggle-wrap" style={{ margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          if (!checked) {
+                            setSelectedUserIds({});
+                            return;
+                          }
+
+                          const nextSelection: Record<string, boolean> = {};
+                          for (const row of users) {
+                            nextSelection[row.slackUserId] = true;
+                          }
+                          setSelectedUserIds(nextSelection);
+                        }}
+                      />
+                      <span>Select All</span>
+                    </label>
+                  </td>
+                  <td colSpan={canWriteUsers ? 5 : 4} />
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         ) : null}
       </div>
