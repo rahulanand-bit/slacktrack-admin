@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
 import { hasPermission } from '../../shared/auth/session';
+import { DismissibleNotice } from '../../shared/components/dismissible-notice';
 
 type AttendanceStatus = 'WFO' | 'WFH' | '-1' | '-0.5';
 
@@ -31,7 +32,16 @@ type MonthlyAttendanceResponse = {
 
 function weekdayLabel(dateYmd: string): string {
   const date = new Date(`${dateYmd}T00:00:00`);
-  return date.toLocaleDateString(undefined, { weekday: 'short' });
+  const labels = ['S', 'M', 'T', 'W', 'Th', 'F', 'S'];
+  return labels[date.getDay()] || '';
+}
+
+function compactUserLabel(name: string | null, slackUserId: string): string {
+  const trimmed = (name || '').trim();
+  if (trimmed.length > 2) {
+    return trimmed.slice(0, 2).toUpperCase();
+  }
+  return trimmed || slackUserId;
 }
 
 function todayYmd(): string {
@@ -130,7 +140,7 @@ export function AttendancePage() {
         </div>
       </div>
 
-      {message ? <div className="info-box">{message}</div> : null}
+      <DismissibleNotice message={message} onClose={() => setMessage(null)} />
 
       {viewType === 'day' ? (
         <div className="card table-card">
@@ -155,13 +165,14 @@ export function AttendancePage() {
                       <button
                         type="button"
                         className="link-btn"
+                        title={row.name || row.slackUserId}
                         onClick={() =>
                           navigate(
                             `/attendance/users/${encodeURIComponent(row.slackUserId)}?month=${monthKeyFromDate(selectedDate)}`
                           )
                         }
                       >
-                        {row.name || row.slackUserId}
+                        {compactUserLabel(row.name, row.slackUserId)}
                       </button>
                     </td>
                     <td>{row.slackUserId}</td>
@@ -232,11 +243,12 @@ export function AttendancePage() {
                       <button
                         type="button"
                         className="link-btn"
+                        title={user.name || user.slackUserId}
                         onClick={() =>
                           navigate(`/attendance/users/${encodeURIComponent(user.slackUserId)}?month=${monthData.month}`)
                         }
                       >
-                        {user.name || user.slackUserId}
+                        {compactUserLabel(user.name, user.slackUserId)}
                       </button>
                     </td>
                     {user.days.map((day) => (

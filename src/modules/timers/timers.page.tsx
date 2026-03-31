@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useMemo, useState } from 'react';
 import { apiClient } from '../../shared/api/client';
+import { DismissibleNotice } from '../../shared/components/dismissible-notice';
 
 type TimerRow = {
   id: number;
@@ -132,7 +133,7 @@ export function TimersPage() {
     <section>
       <h2>Timers</h2>
       <p className="muted">Create timers with simple time input and send manual attendance reminders.</p>
-      {notice ? <div className="info-box">{notice}</div> : null}
+      <DismissibleNotice message={notice} onClose={() => setNotice(null)} />
 
       <div className="grid-cards">
         <article className="card">

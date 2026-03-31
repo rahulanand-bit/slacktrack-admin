@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useMemo, useState } from 'react';
 import { apiClient } from '../../shared/api/client';
+import { DismissibleNotice } from '../../shared/components/dismissible-notice';
 
 type ProjectRow = {
   id: number;
@@ -68,7 +69,7 @@ export function ProjectsPage() {
     <section>
       <h2>Projects</h2>
       <p className="muted">HR can view, add, disable, and remove projects used in Slack project modal.</p>
-      {notice ? <div className="info-box">{notice}</div> : null}
+      <DismissibleNotice message={notice} onClose={() => setNotice(null)} />
 
       <div className="grid-cards">
         <article className="card">

@@ -157,6 +157,19 @@ select {
   border-radius: 10px;
   padding: 10px;
   margin: 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.notice-close-btn {
+  border: 0;
+  background: transparent;
+  color: #1d5f3a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .section-head {

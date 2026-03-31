@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
 import { hasPermission } from '../../shared/auth/session';
+import { DismissibleNotice } from '../../shared/components/dismissible-notice';
 
 type HolidayRow = {
   dateYmd: string;
@@ -125,7 +126,7 @@ export function SettingsPage() {
               </button>
             </div>
             <p className="muted">Use one row per holiday: YYYY-MM-DD, Holiday Name</p>
-            {holidayNotice ? <div className="info-box">{holidayNotice}</div> : null}
+            <DismissibleNotice message={holidayNotice} onClose={() => setHolidayNotice(null)} />
             <textarea
               rows={12}
               value={holidayRaw}

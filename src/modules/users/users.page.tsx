@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useMemo, useState } from 'react';
 import { apiClient } from '../../shared/api/client';
 import { hasPermission } from '../../shared/auth/session';
+import { DismissibleNotice } from '../../shared/components/dismissible-notice';
 
 type UserRow = {
   id: number;
@@ -152,7 +153,7 @@ export function UsersPage() {
           </button>
         ) : null}
       </div>
-      {notice ? <div className="info-box">{notice}</div> : null}
+      <DismissibleNotice message={notice} onClose={() => setNotice(null)} />
 
       <div className="card table-card">
         {usersQuery.isLoading ? <p>Loading users...</p> : null}
