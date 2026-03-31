@@ -38,10 +38,16 @@ function weekdayLabel(dateYmd: string): string {
 
 function compactUserLabel(name: string | null, slackUserId: string): string {
   const trimmed = (name || '').trim();
-  if (trimmed.length > 2) {
-    return trimmed.slice(0, 2).toUpperCase();
+  if (!trimmed) {
+    return slackUserId;
   }
-  return trimmed || slackUserId;
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  if (words.length > 2) {
+    return words.slice(0, 2).join(' ');
+  }
+
+  return trimmed;
 }
 
 function todayYmd(): string {
@@ -224,7 +230,7 @@ export function AttendancePage() {
           {monthlyQuery.isError ? <p>Could not load monthly attendance.</p> : null}
 
           {monthData?.users?.length ? (
-            <table>
+            <table className="attendance-month-table">
               <thead>
                 <tr>
                   <th>User</th>
