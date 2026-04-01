@@ -12,10 +12,18 @@ type UserMonthData = {
 };
 
 type UserProjectAnalytics = {
-  month: string;
+  period: { from: string; to: string };
   slackUserId: string;
   rows: Array<{ projectName: string; daysWorked: number }>;
 };
+
+function formatDayValue(value: number): string {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(1);
+}
 
 async function fetchUserMonth(slackUserId: string, month?: string): Promise<UserMonthData> {
   const response = await apiClient.get(`/api/admin/attendance/users/${encodeURIComponent(slackUserId)}/month`, {
@@ -92,7 +100,7 @@ export function AttendanceUserPage() {
       </div>
 
       <div className="card table-card" style={{ marginTop: 14 }}>
-        <h3>Project-wise Days (WFO/WFH)</h3>
+        <h3>Project-wise Days (WFO/WFH = 1, Half Day = 0.5)</h3>
         {projectAnalyticsQuery.isLoading ? <p>Loading project analytics...</p> : null}
         {projectAnalyticsQuery.isError ? <p>Could not load project analytics.</p> : null}
         {projectAnalyticsQuery.data?.rows?.length ? (
@@ -107,7 +115,7 @@ export function AttendanceUserPage() {
               {projectAnalyticsQuery.data.rows.map((row) => (
                 <tr key={row.projectName}>
                   <td>{row.projectName}</td>
-                  <td>{row.daysWorked}</td>
+                  <td>{formatDayValue(row.daysWorked)}</td>
                 </tr>
               ))}
             </tbody>

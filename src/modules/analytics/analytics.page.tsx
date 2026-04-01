@@ -26,7 +26,7 @@ type EmployeeSummaryRow = {
   slackUserId: string;
   displayName: string | null;
   email: string | null;
-  totalDays: number;
+  activeDays: number;
 };
 
 type EmployeeSummaryResponse = {
@@ -36,7 +36,7 @@ type EmployeeSummaryResponse = {
 
 type ProjectSummaryRow = {
   projectName: string;
-  totalDays: number;
+  activeDays: number;
 };
 
 type ProjectSummaryResponse = {
@@ -116,7 +116,7 @@ function exportBillingCsv(rows: ProjectAnalyticsRow[]): void {
     row.displayName || row.slackUserId,
     row.email || '',
     row.slackUserId,
-    String(row.daysWorked)
+    formatDayValue(row.daysWorked)
   ]);
 
   const csv = [header, ...lines]
@@ -130,6 +130,14 @@ function exportBillingCsv(rows: ProjectAnalyticsRow[]): void {
   link.download = 'billing-detail.csv';
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function formatDayValue(value: number): string {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+
+  return value.toFixed(1);
 }
 
 export function AnalyticsPage() {
@@ -230,7 +238,7 @@ export function AnalyticsPage() {
       <div className="section-head">
         <div>
           <h2>Analytics</h2>
-          <p className="muted">Finance billing analytics (WFO/WFH only).</p>
+          <p className="muted">Finance billing analytics (WFO/WFH = 1, Half Day = 0.5).</p>
         </div>
       </div>
 
@@ -330,7 +338,7 @@ export function AnalyticsPage() {
                   <td>{row.displayName || row.slackUserId}</td>
                   <td>{row.email || '-'}</td>
                   <td>{row.slackUserId}</td>
-                  <td>{row.daysWorked}</td>
+                  <td>{formatDayValue(row.daysWorked)}</td>
                 </tr>
               ))}
             </tbody>
@@ -350,7 +358,7 @@ export function AnalyticsPage() {
                 <tr>
                   <th>Employee</th>
                   <th>Email</th>
-                  <th>Total Days</th>
+                  <th>Active Days</th>
                 </tr>
               </thead>
               <tbody>
@@ -358,7 +366,7 @@ export function AnalyticsPage() {
                   <tr key={row.slackUserId}>
                     <td>{row.displayName || row.slackUserId}</td>
                     <td>{row.email || '-'}</td>
-                    <td>{row.totalDays}</td>
+                    <td>{formatDayValue(row.activeDays)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -376,7 +384,7 @@ export function AnalyticsPage() {
               <thead>
                 <tr>
                   <th>Project</th>
-                  <th>Total Days</th>
+                  <th>Active Days</th>
                 </tr>
               </thead>
               <tbody>
@@ -391,7 +399,7 @@ export function AnalyticsPage() {
                         {row.projectName}
                       </button>
                     </td>
-                    <td>{row.totalDays}</td>
+                    <td>{formatDayValue(row.activeDays)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -422,7 +430,7 @@ export function AnalyticsPage() {
                     <td>{row.displayName || row.slackUserId}</td>
                     <td>{row.email || '-'}</td>
                     <td>{row.slackUserId}</td>
-                    <td>{row.daysWorked}</td>
+                    <td>{formatDayValue(row.daysWorked)}</td>
                   </tr>
                 ))}
               </tbody>
