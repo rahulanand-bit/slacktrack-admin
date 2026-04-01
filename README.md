@@ -35,7 +35,7 @@ Copy `.env.example` to `.env` if you need to override API URL.
 - Users (live data from `/api/admin/users`)
 - Projects (view/add/remove)
 - Attendance (day + monthly + user drill-down + overrides + non-working day highlighting)
-- Analytics (project-wise monthly days worked, WFO/WFH only)
+- Analytics (billing detail + employee summary + project summary + project drill-down users)
 - Settings
 - Timers (inside Settings flow)
 

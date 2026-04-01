@@ -119,15 +119,6 @@ export function UsersPage() {
     onError: () => setNotice('Failed to update email.')
   });
 
-  const messagingMutation = useMutation({
-    mutationFn: ({ slackUserId, isMessageEnabled }: { slackUserId: string; isMessageEnabled: boolean }) =>
-      setMessaging(slackUserId, isMessageEnabled),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
-    onError: () => setNotice('Failed to update messaging state.')
-  });
-
   const bulkMessagingMutation = useMutation({
     mutationFn: async ({ slackUserIds, isMessageEnabled }: { slackUserIds: string[]; isMessageEnabled: boolean }) => {
       await Promise.all(slackUserIds.map((slackUserId) => setMessaging(slackUserId, isMessageEnabled)));
@@ -286,25 +277,9 @@ export function UsersPage() {
                     )}
                   </td>
                   <td>
-                    {canWriteUsers ? (
-                      <label className="toggle-wrap">
-                        <input
-                          type="checkbox"
-                          checked={user.isMessageEnabled}
-                          onChange={(event) =>
-                            messagingMutation.mutate({
-                              slackUserId: user.slackUserId,
-                              isMessageEnabled: event.target.checked
-                            })
-                          }
-                        />
-                        <span>{user.isMessageEnabled ? 'Enabled' : 'Disabled'}</span>
-                      </label>
-                    ) : (
-                      <span className={user.isMessageEnabled ? 'pill on' : 'pill off'}>
-                        {user.isMessageEnabled ? 'Enabled' : 'Disabled'}
-                      </span>
-                    )}
+                    <span className={user.isMessageEnabled ? 'pill on' : 'pill off'}>
+                      {user.isMessageEnabled ? 'Enabled' : 'Disabled'}
+                    </span>
                   </td>
                   {canWriteUsers ? (
                     <td>

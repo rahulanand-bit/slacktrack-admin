@@ -21,7 +21,10 @@ export function AppLayout() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <h1>SlackTrack Admin</h1>
+        <h1 className="brand-title">
+          <img src="/app-icon.png" alt="SlackTrack" className="brand-icon" />
+          <span>SlackTrack Admin</span>
+        </h1>
         <nav>
           {navItems.filter((item) => item.visible).map((item) => (
             <NavLink

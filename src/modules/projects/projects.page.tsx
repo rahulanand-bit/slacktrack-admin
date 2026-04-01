@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FormEvent, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
 import { DismissibleNotice } from '../../shared/components/dismissible-notice';
 
@@ -27,7 +28,12 @@ async function deleteProject(id: number): Promise<void> {
   await apiClient.delete(`/api/admin/projects/${id}`);
 }
 
+function currentMonth(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
 export function ProjectsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [projectName, setProjectName] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
@@ -105,7 +111,17 @@ export function ProjectsPage() {
             <tbody>
               {projects.map((project) => (
                 <tr key={project.id}>
-                  <td>{project.name}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      onClick={() =>
+                        navigate(`/analytics?projectId=${encodeURIComponent(String(project.id))}&month=${currentMonth()}`)
+                      }
+                    >
+                      {project.name}
+                    </button>
+                  </td>
                   <td>{project.active ? 'Yes' : 'No'}</td>
                   <td>
                     <div className="action-row">

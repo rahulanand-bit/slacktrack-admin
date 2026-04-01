@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
 import { hasPermission } from '../../shared/auth/session';
 import { DismissibleNotice } from '../../shared/components/dismissible-notice';
@@ -78,11 +78,37 @@ async function overrideAttendance(input: {
 
 export function AttendancePage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
-  const [selectedDate, setSelectedDate] = useState(todayYmd);
-  const [viewType, setViewType] = useState<'day' | 'month'>('day');
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const rawDate = (searchParams.get('date') || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : todayYmd();
+  });
+  const [viewType, setViewType] = useState<'day' | 'month'>(() => {
+    const rawView = (searchParams.get('view') || '').trim();
+    return rawView === 'month' ? 'month' : 'day';
+  });
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_marked' | AttendanceStatus>(() => {
+    const rawStatus = (searchParams.get('status') || '').trim();
+    if (rawStatus === 'not_marked' || rawStatus === 'WFO' || rawStatus === 'WFH' || rawStatus === '-1' || rawStatus === '-0.5') {
+      return rawStatus;
+    }
+    return 'all';
+  });
   const [menuForUserId, setMenuForUserId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set('view', viewType);
+    params.set('date', selectedDate);
+
+    if (viewType === 'day' && statusFilter !== 'all') {
+      params.set('status', statusFilter);
+    }
+
+    setSearchParams(params, { replace: true });
+  }, [selectedDate, setSearchParams, statusFilter, viewType]);
 
   const attendanceQuery = useQuery({
     queryKey: ['attendance', selectedDate],
@@ -108,6 +134,13 @@ export function AttendancePage() {
   });
 
   const dayRows = useMemo(() => attendanceQuery.data || [], [attendanceQuery.data]);
+  const filteredDayRows = useMemo(() => {
+    if (statusFilter === 'all') return dayRows;
+    if (statusFilter === 'not_marked') {
+      return dayRows.filter((row) => row.status == null);
+    }
+    return dayRows.filter((row) => row.status === statusFilter);
+  }, [dayRows, statusFilter]);
   const monthData = monthlyQuery.data;
   const nonWorkingDateSet = useMemo(() => new Set(monthData?.nonWorkingDates || []), [monthData?.nonWorkingDates]);
   const canOverride = hasPermission('overrides:write');
@@ -143,6 +176,24 @@ export function AttendancePage() {
             Date
             <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
           </label>
+          {viewType === 'day' ? (
+            <label className="inline-field">
+              Status
+              <select
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as 'all' | 'not_marked' | AttendanceStatus)
+                }
+              >
+                <option value="all">All</option>
+                <option value="not_marked">Not Marked</option>
+                <option value="WFO">WFO</option>
+                <option value="WFH">WFH</option>
+                <option value="-1">Leave (-1)</option>
+                <option value="-0.5">Half Day (-0.5)</option>
+              </select>
+            </label>
+          ) : null}
         </div>
       </div>
 
@@ -153,7 +204,7 @@ export function AttendancePage() {
           {attendanceQuery.isLoading ? <p>Loading attendance...</p> : null}
           {attendanceQuery.isError ? <p>Could not load attendance rows.</p> : null}
 
-          {dayRows.length ? (
+          {filteredDayRows.length ? (
             <table>
               <thead>
                 <tr>
@@ -165,7 +216,7 @@ export function AttendancePage() {
                 </tr>
               </thead>
               <tbody>
-                {dayRows.map((row) => (
+                {filteredDayRows.map((row) => (
                   <tr key={row.slackUserId}>
                     <td>
                       <button
@@ -182,7 +233,23 @@ export function AttendancePage() {
                       </button>
                     </td>
                     <td>{row.slackUserId}</td>
-                    <td>{row.status || 'Not marked'}</td>
+                    <td>
+                      <span
+                        className={`attendance-status ${
+                          row.status === 'WFO'
+                            ? 'status-wfo'
+                            : row.status === 'WFH'
+                              ? 'status-wfh'
+                              : row.status === '-1'
+                                ? 'status-leave'
+                                : row.status === '-0.5'
+                                  ? 'status-half-day'
+                                  : 'status-not-marked'
+                        }`}
+                      >
+                        {row.status || 'Not marked'}
+                      </span>
+                    </td>
                     <td>{row.projects.length ? row.projects.join(', ') : '-'}</td>
                     {canOverride ? (
                       <td>
@@ -221,7 +288,7 @@ export function AttendancePage() {
               </tbody>
             </table>
           ) : (
-            !attendanceQuery.isLoading && <p>No users found for attendance view.</p>
+            !attendanceQuery.isLoading && <p>No users found for this filter.</p>
           )}
         </div>
       ) : (

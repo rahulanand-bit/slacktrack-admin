@@ -41,6 +41,20 @@ body {
   letter-spacing: 0.4px;
 }
 
+.brand-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #f4fbff;
+}
+
 .nav-link {
   display: block;
   padding: 10px 12px;
@@ -354,6 +368,39 @@ th {
 
 .attendance-nonworking {
   background: #ffe6ee;
+}
+
+.attendance-status {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.status-not-marked {
+  background: #ffe3e8;
+  color: #8f1d2c;
+}
+
+.status-wfo {
+  background: #d7f3df;
+  color: #14532d;
+}
+
+.status-wfh {
+  background: #e9f9ee;
+  color: #1f6f42;
+}
+
+.status-leave {
+  background: #ffeed6;
+  color: #8d4b00;
+}
+
+.status-half-day {
+  background: #fff7d6;
+  color: #705a00;
 }
 
 .attendance-month-table {
