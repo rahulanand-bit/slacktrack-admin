@@ -36,6 +36,13 @@ export function ProjectsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [projectName, setProjectName] = useState('');
+  const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
+  const [pendingAction, setPendingAction] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: fetchProjects });
@@ -54,6 +61,7 @@ export function ProjectsPage() {
   const toggleMutation = useMutation({
     mutationFn: updateProject,
     onSuccess: async () => {
+      setNotice('Project updated.');
       await queryClient.invalidateQueries({ queryKey: ['projects'] });
     }
   });
@@ -68,7 +76,12 @@ export function ProjectsPage() {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    createMutation.mutate({ name: projectName.trim(), active: true });
+    const name = projectName.trim();
+    setPendingAction({
+      title: 'Confirm Add Project',
+      description: `Add project "${name}"?`,
+      onConfirm: () => createMutation.mutate({ name, active: true })
+    });
   };
 
   return (
@@ -112,19 +125,62 @@ export function ProjectsPage() {
               {projects.map((project) => (
                 <tr key={project.id}>
                   <td>
-                    <button
-                      type="button"
-                      className="link-btn"
-                      onClick={() =>
-                        navigate(`/analytics?projectId=${encodeURIComponent(String(project.id))}&month=${currentMonth()}`)
-                      }
-                    >
-                      {project.name}
-                    </button>
+                    {editingProjectId === project.id ? (
+                      <div className="action-row">
+                        <input
+                          type="text"
+                          value={editingProjectName}
+                          onChange={(event) => setEditingProjectName(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          className="chip-btn"
+                          onClick={() => {
+                            const nextName = editingProjectName.trim();
+                            if (!nextName) return;
+                            toggleMutation.mutate({ id: project.id, name: nextName });
+                            setEditingProjectId(null);
+                            setEditingProjectName('');
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          className="chip-btn"
+                          onClick={() => {
+                            setEditingProjectId(null);
+                            setEditingProjectName('');
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="link-btn"
+                        onClick={() =>
+                          navigate(`/analytics?projectId=${encodeURIComponent(String(project.id))}&month=${currentMonth()}`)
+                        }
+                      >
+                        {project.name}
+                      </button>
+                    )}
                   </td>
                   <td>{project.active ? 'Yes' : 'No'}</td>
                   <td>
                     <div className="action-row">
+                      <button
+                        type="button"
+                        className="chip-btn"
+                        onClick={() => {
+                          setEditingProjectId(project.id);
+                          setEditingProjectName(project.name);
+                        }}
+                      >
+                        Edit
+                      </button>
                       <button
                         type="button"
                         className="chip-btn"
@@ -135,7 +191,13 @@ export function ProjectsPage() {
                       <button
                         type="button"
                         className="chip-btn danger"
-                        onClick={() => deleteMutation.mutate(project.id)}
+                        onClick={() =>
+                          setPendingAction({
+                            title: 'Confirm Remove Project',
+                            description: `Remove project "${project.name}"?`,
+                            onConfirm: () => deleteMutation.mutate(project.id)
+                          })
+                        }
                       >
                         Remove
                       </button>
@@ -149,6 +211,30 @@ export function ProjectsPage() {
           !projectsQuery.isLoading && <p>No projects found.</p>
         )}
       </div>
+
+      {pendingAction ? (
+        <div className="modal-backdrop" onClick={() => setPendingAction(null)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>{pendingAction.title}</h3>
+            <p className="muted">{pendingAction.description}</p>
+            <div className="action-row">
+              <button type="button" className="ghost-btn" onClick={() => setPendingAction(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  pendingAction.onConfirm();
+                  setPendingAction(null);
+                }}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

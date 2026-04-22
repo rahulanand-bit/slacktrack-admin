@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
 
 type DashboardSummary = {
@@ -11,14 +12,33 @@ type DashboardSummary = {
   dateYmd: string;
 };
 
-async function fetchDashboardSummary(): Promise<DashboardSummary> {
-  const response = await apiClient.get('/api/admin/dashboard/summary');
+function todayYmd(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function fetchDashboardSummary(dateYmd: string): Promise<DashboardSummary> {
+  const response = await apiClient.get('/api/admin/dashboard/summary', { params: { dateYmd } });
   return response.data?.data;
 }
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const summaryQuery = useQuery({ queryKey: ['dashboard-summary'], queryFn: fetchDashboardSummary });
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const raw = (searchParams.get('date') || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : todayYmd();
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set('date', selectedDate);
+    setSearchParams(params, { replace: true });
+  }, [selectedDate, setSearchParams]);
+
+  const summaryQuery = useQuery({
+    queryKey: ['dashboard-summary', selectedDate],
+    queryFn: () => fetchDashboardSummary(selectedDate)
+  });
   const summary = summaryQuery.data;
 
   const stats = [
@@ -46,9 +66,16 @@ export function DashboardPage() {
 
   return (
     <section>
-      <h2>Dashboard</h2>
-      <p className="muted">Live summary metrics for today.</p>
-      {summary?.dateYmd ? <p className="muted">Date: {summary.dateYmd}</p> : null}
+      <div className="section-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p className="muted">Daily dashboard summary metrics.</p>
+        </div>
+        <label className="inline-field">
+          Date
+          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+        </label>
+      </div>
 
       {summaryQuery.isLoading ? <p>Loading dashboard data...</p> : null}
       {summaryQuery.isError ? <p>Could not load dashboard metrics.</p> : null}
@@ -65,7 +92,6 @@ export function DashboardPage() {
               if (!stat.onClick) {
                 return;
               }
-
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 stat.onClick();

@@ -10,6 +10,7 @@ type UserRow = {
   slackUserId: string;
   email: string | null;
   isMessageEnabled: boolean;
+  active: boolean;
 };
 
 type CreateUserInput = {
@@ -18,6 +19,8 @@ type CreateUserInput = {
   email?: string | null;
   isMessageEnabled?: boolean;
 };
+
+type MessagingFilter = 'all' | 'enabled' | 'disabled';
 
 async function fetchUsers(): Promise<UserRow[]> {
   const response = await apiClient.get('/api/admin/users');
@@ -28,11 +31,18 @@ async function createUser(input: CreateUserInput): Promise<void> {
   await apiClient.post('/api/admin/users', input);
 }
 
-async function createUsersBulk(users: CreateUserInput[]): Promise<void> {
-  await apiClient.post('/api/admin/users/bulk', { users });
+async function createUsersBulk(users: CreateUserInput[]): Promise<{
+  created: UserRow[];
+  errors: Array<{ slackId: string; reason: string }>;
+}> {
+  const response = await apiClient.post('/api/admin/users/bulk', { users });
+  return response.data?.data;
 }
 
-async function updateUser(slackUserId: string, input: { email?: string | null }): Promise<void> {
+async function updateUser(
+  slackUserId: string,
+  input: { name?: string; email?: string | null; isMessageEnabled?: boolean }
+): Promise<void> {
   await apiClient.patch(`/api/admin/users/${encodeURIComponent(slackUserId)}`, input);
 }
 
@@ -60,23 +70,35 @@ function parseBulkUsers(raw: string): CreateUserInput[] {
     });
 }
 
+function matchesSearch(user: UserRow, query: string): boolean {
+  if (!query.trim()) return true;
+  const normalized = query.trim().toLowerCase();
+  const haystack = [user.displayName || '', user.email || '', user.slackUserId].join(' ').toLowerCase();
+  return haystack.includes(normalized);
+}
+
 export function UsersPage() {
   const canWriteUsers = hasPermission('users:write');
   const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['users'], queryFn: fetchUsers });
-  const users = useMemo(() => usersQuery.data || [], [usersQuery.data]);
+  const users = useMemo(() => (usersQuery.data || []).filter((user) => user.active), [usersQuery.data]);
+
   const [selectedUserIds, setSelectedUserIds] = useState<Record<string, boolean>>({});
-  const selectedIds = useMemo(
-    () => Object.entries(selectedUserIds).filter(([, selected]) => selected).map(([slackUserId]) => slackUserId),
-    [selectedUserIds]
-  );
-  const allSelected = users.length > 0 && users.every((user) => Boolean(selectedUserIds[user.slackUserId]));
+  const [search, setSearch] = useState('');
+  const [messagingFilter, setMessagingFilter] = useState<MessagingFilter>('all');
 
   const [notice, setNotice] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{
+    title: string;
+    description: string;
+    onConfirm: () => void;
+  } | null>(null);
   const [addMode, setAddMode] = useState<'single' | 'bulk'>('single');
-  const [editingSlackUserId, setEditingSlackUserId] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<UserRow | null>(null);
+  const [editingName, setEditingName] = useState('');
   const [editingEmail, setEditingEmail] = useState('');
+  const [editingMessaging, setEditingMessaging] = useState(true);
   const [singleForm, setSingleForm] = useState<CreateUserInput>({
     name: '',
     slackId: '',
@@ -84,6 +106,28 @@ export function UsersPage() {
     isMessageEnabled: true
   });
   const [bulkRaw, setBulkRaw] = useState('');
+
+  const filteredUsers = useMemo(() => {
+    return users.filter((user) => {
+      if (!matchesSearch(user, search)) return false;
+      if (messagingFilter === 'enabled' && !user.isMessageEnabled) return false;
+      if (messagingFilter === 'disabled' && user.isMessageEnabled) return false;
+      return true;
+    });
+  }, [users, search, messagingFilter]);
+
+  const selectedIds = useMemo(
+    () => Object.entries(selectedUserIds).filter(([, selected]) => selected).map(([slackUserId]) => slackUserId),
+    [selectedUserIds]
+  );
+  const allVisibleSelected =
+    filteredUsers.length > 0 && filteredUsers.every((user) => Boolean(selectedUserIds[user.slackUserId]));
+  const selectedRows = useMemo(
+    () => users.filter((user) => Boolean(selectedUserIds[user.slackUserId])),
+    [users, selectedUserIds]
+  );
+  const selectedEnabledCount = selectedRows.filter((row) => row.isMessageEnabled).length;
+  const selectedDisabledCount = selectedRows.length - selectedEnabledCount;
 
   const singleCreateMutation = useMutation({
     mutationFn: createUser,
@@ -93,13 +137,16 @@ export function UsersPage() {
       setShowAddModal(false);
       await queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: () => setNotice('Failed to add user.')
+    onError: () => setNotice('Failed to add user. Duplicate Slack ID may exist.')
   });
 
   const bulkCreateMutation = useMutation({
     mutationFn: createUsersBulk,
-    onSuccess: async () => {
-      setNotice('Bulk users added.');
+    onSuccess: async (result) => {
+      const message = result.errors.length
+        ? `Added ${result.created.length} users. ${result.errors.length} duplicates skipped.`
+        : `Added ${result.created.length} users.`;
+      setNotice(message);
       setBulkRaw('');
       setShowAddModal(false);
       await queryClient.invalidateQueries({ queryKey: ['users'] });
@@ -108,15 +155,30 @@ export function UsersPage() {
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: ({ slackUserId, email }: { slackUserId: string; email: string }) =>
-      updateUser(slackUserId, { email: email || null }),
+    mutationFn: ({
+      slackUserId,
+      name,
+      email,
+      isMessageEnabled
+    }: {
+      slackUserId: string;
+      name: string;
+      email: string;
+      isMessageEnabled: boolean;
+    }) =>
+      updateUser(slackUserId, {
+        name: name.trim() || undefined,
+        email: email.trim() || null,
+        isMessageEnabled
+      }),
     onSuccess: async () => {
-      setNotice('User email updated.');
-      setEditingSlackUserId(null);
+      setNotice('User updated.');
+      setEditTarget(null);
+      setEditingName('');
       setEditingEmail('');
       await queryClient.invalidateQueries({ queryKey: ['users'] });
     },
-    onError: () => setNotice('Failed to update email.')
+    onError: () => setNotice('Failed to update user.')
   });
 
   const bulkMessagingMutation = useMutation({
@@ -124,7 +186,9 @@ export function UsersPage() {
       await Promise.all(slackUserIds.map((slackUserId) => setMessaging(slackUserId, isMessageEnabled)));
     },
     onSuccess: async (_data, variables) => {
-      setNotice(`Messaging ${variables.isMessageEnabled ? 'enabled' : 'disabled'} for ${variables.slackUserIds.length} users.`);
+      setNotice(
+        `Messaging ${variables.isMessageEnabled ? 'enabled' : 'disabled'} for ${variables.slackUserIds.length} users.`
+      );
       setSelectedUserIds({});
       await queryClient.invalidateQueries({ queryKey: ['users'] });
     },
@@ -133,9 +197,14 @@ export function UsersPage() {
 
   const onCreateSingle = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    singleCreateMutation.mutate({
+    const payload = {
       ...singleForm,
       email: singleForm.email?.trim() || null
+    };
+    setPendingAction({
+      title: 'Confirm Add User',
+      description: `Add user "${payload.name}" (${payload.slackId})?`,
+      onConfirm: () => singleCreateMutation.mutate(payload)
     });
   };
 
@@ -143,10 +212,24 @@ export function UsersPage() {
     event.preventDefault();
     try {
       const parsed = parseBulkUsers(bulkRaw);
-      bulkCreateMutation.mutate(parsed);
+      setPendingAction({
+        title: 'Confirm Bulk Add',
+        description: `Add ${parsed.length} users from bulk input?`,
+        onConfirm: () => bulkCreateMutation.mutate(parsed)
+      });
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Invalid bulk input');
     }
+  };
+
+  const triggerBulkMessaging = (isMessageEnabled: boolean) => {
+    const targetIds = [...selectedIds];
+    if (!targetIds.length) return;
+    setPendingAction({
+      title: isMessageEnabled ? 'Enable Messaging' : 'Disable Messaging',
+      description: `${isMessageEnabled ? 'Enable' : 'Disable'} messaging for ${targetIds.length} selected users?`,
+      onConfirm: () => bulkMessagingMutation.mutate({ slackUserIds: targetIds, isMessageEnabled })
+    });
   };
 
   return (
@@ -154,39 +237,91 @@ export function UsersPage() {
       <div className="section-head">
         <div>
           <h2>Users</h2>
-          <p className="muted">Manage recipients, messaging state, and user email metadata.</p>
+          <p className="muted">Manage users and messaging preferences.</p>
         </div>
         {canWriteUsers ? (
+          <button type="button" className="primary-btn" onClick={() => setShowAddModal(true)}>
+            Add Users
+          </button>
+        ) : null}
+      </div>
+
+      <div className="card users-filter-card" style={{ marginTop: 14 }}>
+        <div className="action-row">
+          <label className="inline-field" style={{ minWidth: 260 }}>
+            Search
+            <input
+              type="text"
+              placeholder="Name, email, Slack ID"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <div className="users-chip-row">
+            <button
+              type="button"
+              className={messagingFilter === 'all' ? 'primary-btn' : 'ghost-btn'}
+              onClick={() => setMessagingFilter('all')}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              className={messagingFilter === 'enabled' ? 'primary-btn' : 'ghost-btn'}
+              onClick={() => setMessagingFilter('enabled')}
+            >
+              Messaging ON
+            </button>
+            <button
+              type="button"
+              className={messagingFilter === 'disabled' ? 'primary-btn' : 'ghost-btn'}
+              onClick={() => setMessagingFilter('disabled')}
+            >
+              Messaging OFF
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {canWriteUsers && selectedIds.length ? (
+        <div className="card users-bulk-bar" style={{ marginTop: 12 }}>
+          <div className="users-bulk-summary">
+            <strong>Selected: {selectedIds.length}</strong>
+            <span className="muted">
+              ON {selectedEnabledCount} / OFF {selectedDisabledCount}
+            </span>
+          </div>
           <div className="action-row">
             <button
               type="button"
               className="ghost-btn"
-              disabled={selectedIds.length === 0 || bulkMessagingMutation.isPending}
-              onClick={() => bulkMessagingMutation.mutate({ slackUserIds: selectedIds, isMessageEnabled: true })}
+              onClick={() => triggerBulkMessaging(true)}
+              disabled={bulkMessagingMutation.isPending}
             >
-              Enable Selected ({selectedIds.length})
+              Enable Messaging ({selectedIds.length})
             </button>
             <button
               type="button"
               className="ghost-btn"
-              disabled={selectedIds.length === 0 || bulkMessagingMutation.isPending}
-              onClick={() => bulkMessagingMutation.mutate({ slackUserIds: selectedIds, isMessageEnabled: false })}
+              onClick={() => triggerBulkMessaging(false)}
+              disabled={bulkMessagingMutation.isPending}
             >
-              Disable Selected ({selectedIds.length})
+              Disable Messaging ({selectedIds.length})
             </button>
-            <button type="button" className="primary-btn" onClick={() => setShowAddModal(true)}>
-              Add Users
+            <button type="button" className="chip-btn" onClick={() => setSelectedUserIds({})}>
+              Clear Selection
             </button>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
+
       <DismissibleNotice message={notice} onClose={() => setNotice(null)} />
 
-      <div className="card table-card">
+      <div className="card table-card" style={{ marginTop: 12 }}>
         {usersQuery.isLoading ? <p>Loading users...</p> : null}
         {usersQuery.isError ? <p>Could not load users.</p> : null}
 
-        {users.length ? (
+        {filteredUsers.length ? (
           <table>
             <thead>
               <tr>
@@ -195,22 +330,19 @@ export function UsersPage() {
                     <label className="toggle-wrap" style={{ margin: 0 }}>
                       <input
                         type="checkbox"
-                        checked={allSelected}
+                        checked={allVisibleSelected}
                         onChange={(event) => {
                           const checked = event.target.checked;
-                          if (!checked) {
-                            setSelectedUserIds({});
-                            return;
-                          }
-
-                          const nextSelection: Record<string, boolean> = {};
-                          for (const row of users) {
-                            nextSelection[row.slackUserId] = true;
-                          }
-                          setSelectedUserIds(nextSelection);
+                          setSelectedUserIds((prev) => {
+                            const next = { ...prev };
+                            for (const row of filteredUsers) {
+                              next[row.slackUserId] = checked;
+                            }
+                            return next;
+                          });
                         }}
                       />
-                      <span>Select All</span>
+                      <span>Select Visible</span>
                     </label>
                   </th>
                 ) : null}
@@ -222,7 +354,7 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {filteredUsers.map((user) => (
                 <tr key={user.id}>
                   {canWriteUsers ? (
                     <td>
@@ -240,45 +372,10 @@ export function UsersPage() {
                   ) : null}
                   <td>{user.displayName || '-'}</td>
                   <td>{user.slackUserId}</td>
-                  <td>
-                    {editingSlackUserId === user.slackUserId ? (
-                      <div className="action-row">
-                        <input
-                          type="email"
-                          placeholder="email@example.com"
-                          value={editingEmail}
-                          onChange={(event) => setEditingEmail(event.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="chip-btn"
-                          onClick={() =>
-                            updateUserMutation.mutate({
-                              slackUserId: user.slackUserId,
-                              email: editingEmail
-                            })
-                          }
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="chip-btn"
-                          onClick={() => {
-                            setEditingSlackUserId(null);
-                            setEditingEmail('');
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      user.email || '-'
-                    )}
-                  </td>
+                  <td>{user.email || '-'}</td>
                   <td>
                     <span className={user.isMessageEnabled ? 'pill on' : 'pill off'}>
-                      {user.isMessageEnabled ? 'Enabled' : 'Disabled'}
+                      {user.isMessageEnabled ? 'Messaging ON' : 'Messaging OFF'}
                     </span>
                   </td>
                   {canWriteUsers ? (
@@ -287,8 +384,10 @@ export function UsersPage() {
                         type="button"
                         className="chip-btn"
                         onClick={() => {
-                          setEditingSlackUserId(user.slackUserId);
+                          setEditTarget(user);
+                          setEditingName(user.displayName || '');
                           setEditingEmail(user.email || '');
+                          setEditingMessaging(user.isMessageEnabled);
                         }}
                       >
                         Edit
@@ -299,7 +398,9 @@ export function UsersPage() {
               ))}
             </tbody>
           </table>
-        ) : null}
+        ) : (
+          !usersQuery.isLoading && <p>No users found for current filters.</p>
+        )}
       </div>
 
       {showAddModal && canWriteUsers ? (
@@ -375,6 +476,84 @@ export function UsersPage() {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      ) : null}
+
+      {editTarget && canWriteUsers ? (
+        <div className="modal-backdrop" onClick={() => setEditTarget(null)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="section-head">
+              <h3>Edit User</h3>
+              <button type="button" className="chip-btn" onClick={() => setEditTarget(null)}>
+                Close
+              </button>
+            </div>
+            <form
+              className="stack-gap"
+              onSubmit={(event) => {
+                event.preventDefault();
+                updateUserMutation.mutate({
+                  slackUserId: editTarget.slackUserId,
+                  name: editingName,
+                  email: editingEmail,
+                  isMessageEnabled: editingMessaging
+                });
+              }}
+            >
+              <label className="inline-field">
+                Slack ID (Read-only)
+                <input type="text" value={editTarget.slackUserId} disabled />
+              </label>
+              <label className="inline-field">
+                Name
+                <input type="text" value={editingName} onChange={(event) => setEditingName(event.target.value)} />
+              </label>
+              <label className="inline-field">
+                Email
+                <input type="email" value={editingEmail} onChange={(event) => setEditingEmail(event.target.value)} />
+              </label>
+              <label className="toggle-wrap" style={{ margin: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={editingMessaging}
+                  onChange={(event) => setEditingMessaging(event.target.checked)}
+                />
+                <span>Messaging Enabled</span>
+              </label>
+              <div className="action-row">
+                <button type="button" className="ghost-btn" onClick={() => setEditTarget(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="primary-btn" disabled={updateUserMutation.isPending}>
+                  Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingAction ? (
+        <div className="modal-backdrop" onClick={() => setPendingAction(null)}>
+          <div className="modal-card" onClick={(event) => event.stopPropagation()}>
+            <h3>{pendingAction.title}</h3>
+            <p className="muted">{pendingAction.description}</p>
+            <div className="action-row">
+              <button type="button" className="ghost-btn" onClick={() => setPendingAction(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => {
+                  pendingAction.onConfirm();
+                  setPendingAction(null);
+                }}
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

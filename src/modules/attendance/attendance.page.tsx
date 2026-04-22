@@ -21,6 +21,8 @@ type MonthlyAttendanceResponse = {
   month: string;
   dates: string[];
   nonWorkingDates: string[];
+  holidayDates: string[];
+  weekendDates: string[];
   users: Array<{
     slackUserId: string;
     name: string | null;
@@ -56,6 +58,41 @@ function todayYmd(): string {
 
 function monthKeyFromDate(dateYmd: string): string {
   return dateYmd.slice(0, 7);
+}
+
+function formatLeaveTotal(days: Array<{ status: AttendanceStatus | null }>): string {
+  let total = 0;
+  for (const day of days) {
+    if (day.status === '-1') {
+      total += 1;
+    } else if (day.status === '-0.5') {
+      total += 0.5;
+    }
+  }
+
+  return Number.isInteger(total) ? String(total) : total.toFixed(1);
+}
+
+function statusLabel(status: AttendanceStatus | null): string {
+  if (!status) return '-';
+  if (status === '-1') return 'Leave';
+  if (status === '-0.5') return 'Half Day';
+  return status;
+}
+
+function statusClass(status: AttendanceStatus | null): string {
+  if (status === 'WFO') return 'status-wfo';
+  if (status === 'WFH') return 'status-wfh';
+  if (status === '-1') return 'status-leave';
+  if (status === '-0.5') return 'status-half-day';
+  return 'status-not-marked';
+}
+
+function compactStatusLabel(status: AttendanceStatus | null): string {
+  if (!status) return '-';
+  if (status === '-1') return 'L';
+  if (status === '-0.5') return 'HD';
+  return status;
 }
 
 async function fetchAttendance(dateYmd: string): Promise<AttendanceRow[]> {
@@ -97,6 +134,8 @@ export function AttendancePage() {
   });
   const [menuForUserId, setMenuForUserId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [monthChartMode, setMonthChartMode] = useState<'employee' | 'project'>('employee');
+  const [selectedProject, setSelectedProject] = useState<string>('all');
 
   useEffect(() => {
     const params = new URLSearchParams();
@@ -142,7 +181,47 @@ export function AttendancePage() {
     return dayRows.filter((row) => row.status === statusFilter);
   }, [dayRows, statusFilter]);
   const monthData = monthlyQuery.data;
-  const nonWorkingDateSet = useMemo(() => new Set(monthData?.nonWorkingDates || []), [monthData?.nonWorkingDates]);
+  const holidayDateSet = useMemo(() => new Set(monthData?.holidayDates || []), [monthData?.holidayDates]);
+  const weekendDateSet = useMemo(() => new Set(monthData?.weekendDates || []), [monthData?.weekendDates]);
+  const projectOptions = useMemo(() => {
+    if (!monthData?.users?.length) return [];
+    const set = new Set<string>();
+    for (const user of monthData.users) {
+      for (const day of user.days) {
+        for (const project of day.projects) {
+          if (project.trim()) {
+            set.add(project.trim());
+          }
+        }
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [monthData?.users]);
+  const projectRows = useMemo(() => {
+    if (!monthData?.users?.length || selectedProject === 'all') return [];
+    return monthData.users
+      .map((user) => {
+        const days = user.days.map((day) => ({
+          dateYmd: day.dateYmd,
+          status:
+            day.status === '-1' || day.status === '-0.5'
+              ? day.status
+              : day.projects.includes(selectedProject)
+                ? day.status
+                : null,
+          projects: day.projects
+        }));
+        const hasAny = days.some((day) => day.status !== null);
+        return {
+          slackUserId: user.slackUserId,
+          name: user.name,
+          days,
+          leaveTotal: formatLeaveTotal(user.days),
+          hasAny
+        };
+      })
+      .filter((row) => row.hasAny);
+  }, [monthData?.users, selectedProject]);
   const canOverride = hasPermission('overrides:write');
 
   const triggerOverride = (slackUserId: string, status: AttendanceStatus) => {
@@ -225,7 +304,7 @@ export function AttendancePage() {
                         title={row.name || row.slackUserId}
                         onClick={() =>
                           navigate(
-                            `/attendance/users/${encodeURIComponent(row.slackUserId)}?month=${monthKeyFromDate(selectedDate)}`
+                            `/attendance/users/${encodeURIComponent(row.slackUserId)}?mode=month&month=${monthKeyFromDate(selectedDate)}&date=${selectedDate}`
                           )
                         }
                       >
@@ -295,15 +374,56 @@ export function AttendancePage() {
         <div className="card table-card">
           {monthlyQuery.isLoading ? <p>Loading monthly attendance...</p> : null}
           {monthlyQuery.isError ? <p>Could not load monthly attendance.</p> : null}
+          <div className="section-head" style={{ marginBottom: 12 }}>
+            <div className="action-row">
+              <button
+                type="button"
+                className={monthChartMode === 'employee' ? 'primary-btn' : 'ghost-btn'}
+                onClick={() => setMonthChartMode('employee')}
+              >
+                Employee Wise
+              </button>
+              <button
+                type="button"
+                className={monthChartMode === 'project' ? 'primary-btn' : 'ghost-btn'}
+                onClick={() => setMonthChartMode('project')}
+              >
+                Project Wise
+              </button>
+            </div>
+            {monthChartMode === 'project' ? (
+              <label className="inline-field">
+                Project
+                <select value={selectedProject} onChange={(event) => setSelectedProject(event.target.value)}>
+                  <option value="all">Select project</option>
+                  {projectOptions.map((project) => (
+                    <option key={project} value={project}>
+                      {project}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
 
           {monthData?.users?.length ? (
             <div className="attendance-month-wrap">
-              <table className="attendance-month-table">
+              <table className="attendance-month-table with-leaves">
                 <thead>
                   <tr>
                     <th>User</th>
+                    <th>Leaves</th>
                     {monthData.dates.map((dateYmd) => (
-                      <th key={dateYmd} className={nonWorkingDateSet.has(dateYmd) ? 'attendance-nonworking' : undefined}>
+                      <th
+                        key={dateYmd}
+                        className={
+                          holidayDateSet.has(dateYmd)
+                            ? 'attendance-holiday'
+                            : weekendDateSet.has(dateYmd)
+                              ? 'attendance-weekend'
+                              : undefined
+                        }
+                      >
                         <div>{weekdayLabel(dateYmd)}</div>
                         <div>{dateYmd.slice(8)}</div>
                       </th>
@@ -311,30 +431,95 @@ export function AttendancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {monthData.users.map((user) => (
-                    <tr key={user.slackUserId}>
-                      <td>
-                        <button
-                          type="button"
-                          className="link-btn"
-                          title={user.name || user.slackUserId}
-                          onClick={() =>
-                            navigate(`/attendance/users/${encodeURIComponent(user.slackUserId)}?month=${monthData.month}`)
-                          }
-                        >
-                          {compactUserLabel(user.name, user.slackUserId)}
-                        </button>
-                      </td>
-                      {user.days.map((day) => (
-                        <td
-                          key={day.dateYmd}
-                          className={nonWorkingDateSet.has(day.dateYmd) ? 'attendance-nonworking' : undefined}
-                        >
-                          {day.status || '-'}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                  {monthChartMode === 'employee'
+                    ? monthData.users.map((user) => (
+                        <tr key={user.slackUserId}>
+                          <td>
+                            <button
+                              type="button"
+                              className="link-btn"
+                              title={user.name || user.slackUserId}
+                              onClick={() =>
+                                navigate(
+                                  `/attendance/users/${encodeURIComponent(user.slackUserId)}?mode=month&month=${monthData.month}&date=${selectedDate}`
+                                )
+                              }
+                          >
+                              {compactUserLabel(user.name, user.slackUserId)}
+                            </button>
+                          </td>
+                          <td>{formatLeaveTotal(user.days)}</td>
+                          {user.days.map((day) => (
+                            <td
+                              key={day.dateYmd}
+                              title={`Date: ${day.dateYmd}\nStatus: ${statusLabel(day.status)}\nProjects: ${
+                                day.projects.length ? day.projects.join(', ') : '-'
+                              }`}
+                              className={
+                                holidayDateSet.has(day.dateYmd)
+                                  ? 'attendance-holiday'
+                                  : weekendDateSet.has(day.dateYmd)
+                                    ? 'attendance-weekend'
+                                    : undefined
+                              }
+                            >
+                              <span className={`attendance-status ${statusClass(day.status)}`}>
+                                {compactStatusLabel(day.status)}
+                              </span>
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    : selectedProject === 'all'
+                      ? (
+                        <tr>
+                          <td colSpan={monthData.dates.length + 2}>Select a project to view project-wise monthly chart.</td>
+                        </tr>
+                        )
+                      : projectRows.length
+                        ? projectRows.map((user) => (
+                            <tr key={user.slackUserId}>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="link-btn"
+                                  title={user.name || user.slackUserId}
+                                  onClick={() =>
+                                    navigate(
+                                      `/attendance/users/${encodeURIComponent(user.slackUserId)}?mode=month&month=${monthData.month}&date=${selectedDate}`
+                                    )
+                                  }
+                                >
+                                  {compactUserLabel(user.name, user.slackUserId)}
+                                </button>
+                              </td>
+                              <td>{user.leaveTotal}</td>
+                              {user.days.map((day) => (
+                                <td
+                                  key={day.dateYmd}
+                                  title={`Date: ${day.dateYmd}\nStatus: ${statusLabel(day.status)}\nProjects: ${
+                                    day.projects.length ? day.projects.join(', ') : '-'
+                                  }`}
+                                  className={
+                                    holidayDateSet.has(day.dateYmd)
+                                      ? 'attendance-holiday'
+                                      : weekendDateSet.has(day.dateYmd)
+                                        ? 'attendance-weekend'
+                                        : undefined
+                                  }
+                                >
+                                  <span className={`attendance-status ${statusClass(day.status)}`}>
+                                    {compactStatusLabel(day.status)}
+                                  </span>
+                                </td>
+                              ))}
+                            </tr>
+                          ))
+                        : (
+                          <tr>
+                            <td colSpan={monthData.dates.length + 2}>No attendance mapped for this project in the selected month.</td>
+                          </tr>
+                          )}
                 </tbody>
               </table>
             </div>

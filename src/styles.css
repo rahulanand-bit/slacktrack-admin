@@ -345,6 +345,16 @@ select {
   background: #ffe2e7;
 }
 
+.kpi-clickable {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.kpi-clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 22px rgba(22, 47, 90, 0.14);
+}
+
 .table-card {
   overflow-x: auto;
 }
@@ -366,8 +376,12 @@ th {
   background: #f6f9ff;
 }
 
-.attendance-nonworking {
+.attendance-weekend {
   background: #ffe6ee;
+}
+
+.attendance-holiday {
+  background: #ece4ff;
 }
 
 .attendance-status {
@@ -423,6 +437,23 @@ th {
   width: 170px;
   min-width: 170px;
   max-width: 170px;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: #f6f9ff;
+}
+
+.attendance-month-table.with-leaves th:nth-child(2),
+.attendance-month-table.with-leaves td:nth-child(2) {
+  width: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  font-weight: 700;
+  color: #1c3e68;
+  background: #f6f9ff;
+  position: sticky;
+  left: 170px;
+  z-index: 2;
 }
 
 .attendance-month-table .link-btn {
@@ -433,11 +464,62 @@ th {
   text-align: left;
 }
 
+.attendance-month-table .attendance-status {
+  padding: 2px 4px;
+  font-size: 10px;
+  line-height: 1.15;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .attendance-month-wrap {
   width: 100%;
   max-width: 100%;
   overflow: auto;
   max-height: 72vh;
+}
+
+.attendance-month-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f6f9ff;
+}
+
+.user-project-col {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-pill-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.project-pill {
+  display: inline-block;
+  background: #e7f1ff;
+  color: #1c4574;
+  border-radius: 999px;
+  padding: 2px 6px;
+  font-size: 10px;
+  line-height: 1.15;
+  max-width: 42px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-pill.extra {
+  background: #f0ecff;
+  color: #4a3f8a;
+  max-width: none;
 }
 
 .pill {
@@ -462,6 +544,229 @@ th {
   color: #526884;
 }
 
+.users-filter-card {
+  position: sticky;
+  top: 10px;
+  z-index: 6;
+}
+
+.users-chip-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.users-bulk-bar {
+  position: sticky;
+  top: 92px;
+  z-index: 6;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.users-bulk-summary {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.analytics-trend-list {
+  display: grid;
+  gap: 10px;
+}
+
+.analytics-legend {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+
+.analytics-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #39597f;
+  font-size: 12px;
+}
+
+.analytics-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.analytics-trend-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 360px;
+  gap: 10px;
+  align-items: center;
+}
+
+.analytics-trend-date {
+  font-weight: 600;
+  color: #294972;
+}
+
+.analytics-trend-bar {
+  display: flex;
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e8eff8;
+}
+
+.analytics-trend-bar .seg-wfo {
+  background: #4db88a;
+}
+
+.analytics-trend-bar .seg-wfh {
+  background: #5fa7ea;
+}
+
+.analytics-trend-bar .seg-leave {
+  background: #f2be66;
+}
+
+.analytics-trend-bar .seg-halfday {
+  background: #a785db;
+}
+
+.analytics-legend .seg-wfo {
+  background: #4db88a;
+}
+
+.analytics-legend .seg-wfh {
+  background: #5fa7ea;
+}
+
+.analytics-legend .seg-leave {
+  background: #f2be66;
+}
+
+.analytics-legend .seg-halfday {
+  background: #a785db;
+}
+
+.analytics-trend-meta {
+  color: #39597f;
+  font-size: 13px;
+}
+
+.analytics-project-bars {
+  display: grid;
+  gap: 10px;
+}
+
+.analytics-section-title {
+  margin: 0 0 8px;
+}
+
+.donut-wrap {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.analytics-donut {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+}
+
+.analytics-donut-center {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px #d9e4f4;
+}
+
+.analytics-donut-center strong {
+  font-size: 18px;
+  line-height: 1;
+  color: #153965;
+}
+
+.analytics-donut-center span {
+  font-size: 10px;
+  color: #5a7395;
+}
+
+.donut-legend {
+  display: grid;
+  gap: 6px;
+}
+
+.donut-legend-item {
+  border: 1px solid #d9e6f8;
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #f8fbff;
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  cursor: pointer;
+  text-align: left;
+}
+
+.donut-legend-item i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.donut-legend-item span {
+  color: #2e4f78;
+  font-size: 13px;
+}
+
+.donut-legend-item strong {
+  color: #0f3564;
+}
+
+.analytics-project-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 200px) 1fr minmax(110px, 200px);
+  gap: 10px;
+  align-items: center;
+}
+
+.analytics-project-label {
+  font-weight: 600;
+  color: #294972;
+}
+
+.analytics-project-track {
+  height: 12px;
+  border-radius: 999px;
+  background: #e7eff9;
+  overflow: hidden;
+}
+
+.analytics-project-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #1b73dd, #0eb39b);
+}
+
+.analytics-project-value {
+  text-align: right;
+  color: #355376;
+  font-size: 13px;
+}
+
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: 1fr;
@@ -475,5 +780,26 @@ th {
 
   .section-head {
     align-items: stretch;
+  }
+
+  .analytics-trend-row {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-project-row {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-project-value {
+    text-align: left;
+  }
+
+  .donut-wrap {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  .donut-legend {
+    width: 100%;
   }
 }

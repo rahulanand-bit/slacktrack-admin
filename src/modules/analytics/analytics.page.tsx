@@ -1,445 +1,640 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '../../shared/api/client';
 
-type ProjectOption = {
-  id: number;
-  name: string;
-  active: boolean;
+type PeriodType = 'week' | 'month';
+
+type AnalyticsOverviewResponse = {
+  periodType: PeriodType;
+  period: string;
+  range: { from: string; to: string };
+  kpi: {
+    activeUsers: number;
+    presentCount: number;
+    pendingAttendance: number;
+    employeesOnLeave: number;
+    highLeaveEmployees: number;
+    wfhHeavyEmployees: number;
+    attendanceCompliancePct: number;
+  };
 };
 
-type ProjectAnalyticsRow = {
+type AnalyticsTrendRow = {
+  dateYmd: string;
+  wfoCount: number;
+  wfhCount: number;
+  leaveCount: number;
+  halfDayCount: number;
+  markedCount: number;
+};
+
+type AnalyticsTrendResponse = {
+  periodType: PeriodType;
+  period: string;
+  range: { from: string; to: string };
+  rows: AnalyticsTrendRow[];
+};
+
+type HighLeaveEmployeeRow = {
   slackUserId: string;
   displayName: string | null;
   email: string | null;
-  projectName: string;
-  daysWorked: number;
+  leaveDays: number;
 };
 
-type ProjectAnalyticsResponse = {
-  period: { from: string; to: string };
-  rows: ProjectAnalyticsRow[];
-};
-
-type EmployeeSummaryRow = {
+type WfhHeavyEmployeeRow = {
   slackUserId: string;
   displayName: string | null;
   email: string | null;
-  activeDays: number;
+  wfhDays: number;
+  presentDays: number;
+  wfhRatioPct: number;
 };
 
-type EmployeeSummaryResponse = {
-  period: { from: string; to: string };
-  rows: EmployeeSummaryRow[];
+type WfoBaselineRow = {
+  slackUserId: string;
+  displayName: string | null;
+  email: string | null;
+  wfoDays: number;
+  meetsBaseline: boolean;
 };
 
-type ProjectSummaryRow = {
+type AnalyticsHrInsightsResponse = {
+  periodType: PeriodType;
+  period: string;
+  range: { from: string; to: string };
+  leaveThreshold: number;
+  wfhRatioThresholdPct: number;
+  baselineWfoDays: number;
+  highLeaveEmployees: HighLeaveEmployeeRow[];
+  wfhHeavyEmployees: WfhHeavyEmployeeRow[];
+  wfoBaseline: WfoBaselineRow[];
+};
+
+type ProjectContributionRow = {
   projectName: string;
   activeDays: number;
+  sharePct: number;
 };
 
-type ProjectSummaryResponse = {
-  period: { from: string; to: string };
-  rows: ProjectSummaryRow[];
+type AnalyticsFinanceResponse = {
+  periodType: PeriodType;
+  period: string;
+  range: { from: string; to: string };
+  rows: ProjectContributionRow[];
 };
 
-type ProjectUsersResponse = {
-  period: { from: string; to: string };
-  projectName: string;
-  rows: ProjectAnalyticsRow[];
+type ChartSlice = {
+  key: string;
+  label: string;
+  value: number;
 };
+
+type AnalyticsChartsResponse = {
+  periodType: PeriodType;
+  period: string;
+  range: { from: string; to: string };
+  generatedAt: string;
+  attendanceMix: ChartSlice[];
+  workforceState: ChartSlice[];
+  projectShare: ChartSlice[];
+};
+
+function todayYmd(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
 }
 
-function isValidMonth(value: string | null): value is string {
-  return Boolean(value && /^\d{4}-\d{2}$/.test(value));
+function formatYmd(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-function monthToRange(month: string): { from: string; to: string } {
-  const [year, mon] = month.split('-').map(Number);
-  const start = new Date(year, (mon || 1) - 1, 1);
-  const end = new Date(year, (mon || 1), 0);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10)
-  };
+function weekRangeFromSeed(seedYmd: string): { from: string; to: string } {
+  const safeSeed = /^\d{4}-\d{2}-\d{2}$/.test(seedYmd) ? seedYmd : todayYmd();
+  const seedDate = new Date(`${safeSeed}T00:00:00`);
+  const weekDay = seedDate.getDay();
+  const diffToMonday = (weekDay + 6) % 7;
+  const start = new Date(seedDate);
+  start.setDate(seedDate.getDate() - diffToMonday);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { from: formatYmd(start), to: formatYmd(end) };
 }
 
-type AnalyticsFilters = {
-  from: string;
-  to: string;
-  search?: string;
-  slackUserIds?: string;
-  projects?: string;
-};
-
-function compactCsv(items: string[]): string | undefined {
-  const cleaned = items.map((item) => item.trim()).filter(Boolean);
-  if (!cleaned.length) return undefined;
-  return cleaned.join(',');
+function monthRange(monthValue: string): { from: string; to: string } {
+  const safe = /^\d{4}-\d{2}$/.test(monthValue) ? monthValue : currentMonth();
+  const [year, month] = safe.split('-').map(Number);
+  const start = new Date(year, (month || 1) - 1, 1);
+  const end = new Date(year, month || 1, 0);
+  return { from: formatYmd(start), to: formatYmd(end) };
 }
 
-async function fetchProjectAnalytics(filters: AnalyticsFilters): Promise<ProjectAnalyticsResponse> {
-  const response = await apiClient.get('/api/admin/analytics/projects', { params: filters });
-  return response.data?.data;
-}
-
-async function fetchEmployeeSummary(filters: AnalyticsFilters): Promise<EmployeeSummaryResponse> {
-  const response = await apiClient.get('/api/admin/analytics/summary/employees', { params: filters });
-  return response.data?.data;
-}
-
-async function fetchProjectSummary(filters: AnalyticsFilters): Promise<ProjectSummaryResponse> {
-  const response = await apiClient.get('/api/admin/analytics/summary/projects', { params: filters });
-  return response.data?.data;
-}
-
-async function fetchProjectUsers(projectName: string, filters: AnalyticsFilters): Promise<ProjectUsersResponse> {
-  const response = await apiClient.get(`/api/admin/analytics/projects/${encodeURIComponent(projectName)}/users`, {
-    params: filters
-  });
-  return response.data?.data;
-}
-
-async function fetchProjects(): Promise<ProjectOption[]> {
-  const response = await apiClient.get('/api/admin/projects');
-  return response.data?.data || [];
-}
-
-function exportBillingCsv(rows: ProjectAnalyticsRow[]): void {
-  const header = ['Project', 'Employee', 'Email', 'Slack ID', 'Days Worked'];
-  const lines = rows.map((row) => [
-    row.projectName,
-    row.displayName || row.slackUserId,
-    row.email || '',
-    row.slackUserId,
-    formatDayValue(row.daysWorked)
-  ]);
-
-  const csv = [header, ...lines]
-    .map((line) => line.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'billing-detail.csv';
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function formatDayValue(value: number): string {
+function formatValue(value: number, digits = 1): string {
   if (Number.isInteger(value)) {
     return String(value);
   }
+  return value.toFixed(digits);
+}
 
-  return value.toFixed(1);
+function formatPct(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '0%';
+  }
+  return `${value.toFixed(1)}%`;
+}
+
+async function fetchOverview(params: {
+  periodType: PeriodType;
+  period: string;
+  leaveThreshold: number;
+  wfhRatioThresholdPct: number;
+  minPresentDaysForWfhRatio: number;
+}): Promise<AnalyticsOverviewResponse> {
+  const response = await apiClient.get('/api/admin/analytics/overview', { params });
+  return response.data?.data;
+}
+
+async function fetchTrend(params: { periodType: PeriodType; period: string }): Promise<AnalyticsTrendResponse> {
+  const response = await apiClient.get('/api/admin/analytics/trend', { params });
+  return response.data?.data;
+}
+
+async function fetchHrInsights(params: {
+  periodType: PeriodType;
+  period: string;
+  leaveThreshold: number;
+  wfhRatioThresholdPct: number;
+  minPresentDaysForWfhRatio: number;
+  baselineWfoDays: number;
+  limit: number;
+}): Promise<AnalyticsHrInsightsResponse> {
+  const response = await apiClient.get('/api/admin/analytics/hr/insights', { params });
+  return response.data?.data;
+}
+
+async function fetchFinanceProjectContribution(params: {
+  periodType: PeriodType;
+  period: string;
+}): Promise<AnalyticsFinanceResponse> {
+  const response = await apiClient.get('/api/admin/analytics/finance/project-contribution', { params });
+  return response.data?.data;
+}
+
+async function fetchCharts(params: { periodType: PeriodType; period: string }): Promise<AnalyticsChartsResponse> {
+  const response = await apiClient.get('/api/admin/analytics/charts', { params });
+  return response.data?.data;
+}
+
+function DonutCard({
+  title,
+  slices,
+  colors,
+  onSliceClick
+}: {
+  title: string;
+  slices: ChartSlice[];
+  colors: string[];
+  onSliceClick?: (slice: ChartSlice) => void;
+}) {
+  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
+  let cursor = 0;
+  const segments: string[] = [];
+  slices.forEach((slice, index) => {
+    const portion = total > 0 ? (slice.value / total) * 100 : 0;
+    const next = cursor + portion;
+    segments.push(`${colors[index % colors.length]} ${cursor}% ${next}%`);
+    cursor = next;
+  });
+
+  return (
+    <div className="card">
+      <h3 className="analytics-section-title">{title}</h3>
+      <div className="donut-wrap">
+        <div
+          className="analytics-donut"
+          style={{
+            background:
+              total > 0
+                ? `conic-gradient(${segments.join(', ')})`
+                : 'conic-gradient(#e6edf8 0% 100%)'
+          }}
+        >
+          <div className="analytics-donut-center">
+            <strong>{formatPct(total)}</strong>
+            <span>Total</span>
+          </div>
+        </div>
+        <div className="donut-legend">
+          {slices.map((slice, index) => (
+            <button
+              key={slice.key}
+              type="button"
+              className="donut-legend-item"
+              onClick={() => onSliceClick?.(slice)}
+              title={`Show ${slice.label} details`}
+            >
+              <i style={{ background: colors[index % colors.length] }} />
+              <span>{slice.label}</span>
+              <strong>{formatPct(slice.value)}</strong>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function AnalyticsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const month = isValidMonth(searchParams.get('month')) ? String(searchParams.get('month')) : currentMonth();
-  const initialProjectId = (searchParams.get('projectId') || '').trim();
-  const initialRange = monthToRange(month);
-  const [fromDate, setFromDate] = useState(initialRange.from);
-  const [toDate, setToDate] = useState(initialRange.to);
-  const [search, setSearch] = useState('');
-  const [selectedUserId, setSelectedUserId] = useState('all');
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId || 'all');
-  const [drillProject, setDrillProject] = useState<string | null>(null);
+  const initialPeriodType: PeriodType = searchParams.get('periodType') === 'week' ? 'week' : 'month';
+  const initialPeriod =
+    (searchParams.get('period') || '').trim() || (initialPeriodType === 'week' ? todayYmd() : currentMonth());
 
-  const projectsQuery = useQuery({ queryKey: ['projects'], queryFn: fetchProjects });
-  const projects = useMemo(() => projectsQuery.data || [], [projectsQuery.data]);
-  const selectedProjectName = useMemo(() => {
-    if (selectedProjectId === 'all') {
-      return undefined;
-    }
+  const [periodType, setPeriodType] = useState<PeriodType>(initialPeriodType);
+  const [period, setPeriod] = useState(initialPeriod);
+  const [focus, setFocus] = useState((searchParams.get('focus') || '').trim());
+  const highLeaveRef = useRef<HTMLDivElement | null>(null);
+  const wfhHeavyRef = useRef<HTMLDivElement | null>(null);
+  const trendRef = useRef<HTMLDivElement | null>(null);
+  const baselineRef = useRef<HTMLDivElement | null>(null);
+  const financeRef = useRef<HTMLDivElement | null>(null);
 
-    const matched = projects.find((project) => String(project.id) === selectedProjectId);
-    return matched?.name;
-  }, [projects, selectedProjectId]);
-
-  const filters = useMemo<AnalyticsFilters>(
-    () => ({
-      from: fromDate,
-      to: toDate,
-      search: search.trim() || undefined,
-      slackUserIds: selectedUserId !== 'all' ? compactCsv([selectedUserId]) : undefined,
-      projects: selectedProjectName ? compactCsv([selectedProjectName]) : undefined
-    }),
-    [fromDate, toDate, search, selectedUserId, selectedProjectName]
-  );
-
-  const monthForUrl = useMemo(() => fromDate.slice(0, 7), [fromDate]);
-
-  const query = useQuery({
-    queryKey: ['analytics-projects', filters],
-    queryFn: () => fetchProjectAnalytics(filters)
-  });
-
-  const employeeSummaryQuery = useQuery({
-    queryKey: ['analytics-summary-employees', filters],
-    queryFn: () => fetchEmployeeSummary(filters)
-  });
-
-  const projectSummaryQuery = useQuery({
-    queryKey: ['analytics-summary-projects', filters],
-    queryFn: () => fetchProjectSummary(filters)
-  });
-
-  const projectUsersQuery = useQuery({
-    queryKey: ['analytics-project-users', drillProject, filters],
-    queryFn: () => fetchProjectUsers(String(drillProject), { ...filters, projects: undefined }),
-    enabled: Boolean(drillProject)
-  });
-
-  const rows = useMemo(() => query.data?.rows || [], [query.data?.rows]);
-  const employeeRows = useMemo(() => employeeSummaryQuery.data?.rows || [], [employeeSummaryQuery.data?.rows]);
-  const projectRows = useMemo(() => projectSummaryQuery.data?.rows || [], [projectSummaryQuery.data?.rows]);
-
-  const employeeOptions = useMemo(() => {
-    const options = Array.from(new Map(employeeRows.map((row) => [row.slackUserId, row])).values());
-    return options.sort((a, b) => (a.displayName || a.slackUserId).localeCompare(b.displayName || b.slackUserId));
-  }, [employeeRows]);
-
-  const projectOptions = useMemo(
-    () => [...projects].sort((a, b) => a.name.localeCompare(b.name)),
-    [projects]
-  );
-
-  useEffect(() => {
-    if (selectedProjectId === 'all') {
-      return;
-    }
-
-    const exists = projects.some((project) => String(project.id) === selectedProjectId);
-    if (!exists) {
-      setSelectedProjectId('all');
-    }
-  }, [projects, selectedProjectId]);
+  const leaveThreshold = 2;
+  const wfhRatioThresholdPct = 70;
+  const minPresentDaysForWfhRatio = 3;
+  const baselineWfoDays = 3;
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (selectedProjectId !== 'all') {
-      params.set('projectId', selectedProjectId);
+    params.set('periodType', periodType);
+    params.set('period', period);
+    if (focus) {
+      params.set('focus', focus);
     }
-    params.set('month', monthForUrl);
     setSearchParams(params, { replace: true });
-  }, [monthForUrl, selectedProjectId, setSearchParams]);
+  }, [periodType, period, focus, setSearchParams]);
 
-  const periodLabel = `${query.data?.period.from || fromDate} to ${query.data?.period.to || toDate}`;
+  const overviewQuery = useQuery({
+    queryKey: ['analytics-overview', periodType, period, leaveThreshold, wfhRatioThresholdPct, minPresentDaysForWfhRatio],
+    queryFn: () =>
+      fetchOverview({
+        periodType,
+        period,
+        leaveThreshold,
+        wfhRatioThresholdPct,
+        minPresentDaysForWfhRatio
+      })
+  });
+
+  const trendQuery = useQuery({
+    queryKey: ['analytics-trend', periodType, period],
+    queryFn: () => fetchTrend({ periodType, period })
+  });
+
+  const hrInsightsQuery = useQuery({
+    queryKey: [
+      'analytics-hr-insights',
+      periodType,
+      period,
+      leaveThreshold,
+      wfhRatioThresholdPct,
+      minPresentDaysForWfhRatio,
+      baselineWfoDays
+    ],
+    queryFn: () =>
+      fetchHrInsights({
+        periodType,
+        period,
+        leaveThreshold,
+        wfhRatioThresholdPct,
+        minPresentDaysForWfhRatio,
+        baselineWfoDays,
+        limit: 20
+      })
+  });
+
+  const financeQuery = useQuery({
+    queryKey: ['analytics-finance-project-contribution', periodType, period],
+    queryFn: () => fetchFinanceProjectContribution({ periodType, period })
+  });
+
+  const chartsQuery = useQuery({
+    queryKey: ['analytics-charts', periodType, period],
+    queryFn: () => fetchCharts({ periodType, period })
+  });
+
+  const loading =
+    overviewQuery.isLoading ||
+    trendQuery.isLoading ||
+    hrInsightsQuery.isLoading ||
+    financeQuery.isLoading ||
+    chartsQuery.isLoading;
+  const hasError =
+    overviewQuery.isError ||
+    trendQuery.isError ||
+    hrInsightsQuery.isError ||
+    financeQuery.isError ||
+    chartsQuery.isError;
+
+  const overview = overviewQuery.data;
+  const trendRows = trendQuery.data?.rows || [];
+  const hrInsights = hrInsightsQuery.data;
+  const financeRows = financeQuery.data?.rows || [];
+  const charts = chartsQuery.data;
+
+  const rangeLabel = overview ? `${overview.range.from} to ${overview.range.to}` : '-';
+  const presentLabel = periodType === 'week' ? 'Present In Week' : 'Present In Period';
+
+  const localRange = periodType === 'week' ? weekRangeFromSeed(period) : monthRange(period);
+
+  useEffect(() => {
+    if (!focus || loading) return;
+    if (focus === 'high-leave' && highLeaveRef.current) {
+      highLeaveRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (focus === 'wfh-heavy' && wfhHeavyRef.current) {
+      wfhHeavyRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (focus === 'trend' && trendRef.current) {
+      trendRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (focus === 'wfo-baseline' && baselineRef.current) {
+      baselineRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (focus === 'finance' && financeRef.current) {
+      financeRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [focus, loading]);
 
   return (
     <section>
       <div className="section-head">
         <div>
           <h2>Analytics</h2>
-          <p className="muted">Finance billing analytics (WFO/WFH = 1, Half Day = 0.5).</p>
+          <p className="muted">HR and finance attendance analytics with compliance insights.</p>
         </div>
-      </div>
-
-      <div className="card" style={{ marginBottom: 14 }}>
         <div className="action-row">
           <label className="inline-field">
-            From
-            <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-          </label>
-          <label className="inline-field">
-            To
-            <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-          </label>
-          <label className="inline-field">
-            Employee
-            <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}>
-              <option value="all">All</option>
-              {employeeOptions.map((row) => (
-                <option key={row.slackUserId} value={row.slackUserId}>
-                  {row.displayName || row.slackUserId}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="inline-field">
-            Project
+            Period
             <select
-              value={selectedProjectId}
+              value={periodType}
               onChange={(event) => {
-                setSelectedProjectId(event.target.value);
-                setDrillProject(null);
+                const next = event.target.value === 'week' ? 'week' : 'month';
+                setPeriodType(next);
+                setPeriod(next === 'week' ? todayYmd() : currentMonth());
               }}
             >
-              <option value="all">All</option>
-              {projectOptions.map((project) => (
-                <option key={project.id} value={String(project.id)}>
-                  {project.name}
-                </option>
-              ))}
+              <option value="month">Monthly</option>
+              <option value="week">Weekly</option>
             </select>
           </label>
-          <label className="inline-field" style={{ minWidth: 240 }}>
-            Search
-            <input
-              type="text"
-              placeholder="Name, email, project"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+          <label className="inline-field">
+            {periodType === 'week' ? 'Week Seed Date' : 'Month'}
+            {periodType === 'week' ? (
+              <input type="date" value={period} onChange={(event) => setPeriod(event.target.value)} />
+            ) : (
+              <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+            )}
           </label>
-          <button
-            type="button"
-            className="ghost-btn"
-            onClick={() => {
-              const resetRange = monthToRange(currentMonth());
-              setFromDate(resetRange.from);
-              setToDate(resetRange.to);
-              setSelectedUserId('all');
-              setSelectedProjectId('all');
-              setSearch('');
-              setDrillProject(null);
-            }}
-          >
-            Reset
-          </button>
         </div>
-        <p className="muted" style={{ marginTop: 10, marginBottom: 0 }}>
-          Period: {periodLabel}
-        </p>
       </div>
 
-      <div className="card table-card">
-        <div className="section-head">
-          <h3>Billing Detail</h3>
-          <button type="button" className="ghost-btn" onClick={() => exportBillingCsv(rows)} disabled={!rows.length}>
-            Export CSV
-          </button>
-        </div>
-        {query.isLoading ? <p>Loading analytics...</p> : null}
-        {query.isError ? <p>Could not load analytics data.</p> : null}
+      <p className="muted" style={{ marginTop: 8 }}>
+        Range: {rangeLabel}
+      </p>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Thresholds: High leave {leaveThreshold}+ days, WFH-heavy {wfhRatioThresholdPct}%+, WFO baseline {baselineWfoDays}
+        days/week.
+      </p>
 
-        {rows.length ? (
+      {loading ? <p>Loading analytics...</p> : null}
+      {hasError ? <p>Could not load analytics data.</p> : null}
+
+      <div className="grid-cards">
+        <article className="card stat-card mint">
+          <span>{presentLabel}</span>
+          <strong>{overview?.kpi.presentCount ?? '-'}</strong>
+        </article>
+        <article className="card stat-card sun">
+          <span>Pending Attendance</span>
+          <strong>{overview?.kpi.pendingAttendance ?? '-'}</strong>
+        </article>
+        <article className="card stat-card rose">
+          <span>Employees on Leave</span>
+          <strong>{overview?.kpi.employeesOnLeave ?? '-'}</strong>
+        </article>
+        <article className="card stat-card sky kpi-clickable" onClick={() => setFocus('high-leave')}>
+          <span>High Leave Employees</span>
+          <strong>{overview?.kpi.highLeaveEmployees ?? '-'}</strong>
+        </article>
+        <article className="card stat-card sky kpi-clickable" onClick={() => setFocus('wfh-heavy')}>
+          <span>WFH-heavy Employees</span>
+          <strong>{overview?.kpi.wfhHeavyEmployees ?? '-'}</strong>
+        </article>
+        <article className="card stat-card mint">
+          <span>Attendance Compliance %</span>
+          <strong>{overview ? `${formatValue(overview.kpi.attendanceCompliancePct)}%` : '-'}</strong>
+        </article>
+      </div>
+
+      <div className="grid-cards" style={{ marginTop: 14 }}>
+        <DonutCard
+          title="Attendance Mix"
+          slices={charts?.attendanceMix || []}
+          colors={['#4db88a', '#5fa7ea', '#f2be66', '#a785db']}
+          onSliceClick={(slice) => {
+            if (slice.key === 'LEAVE') setFocus('high-leave');
+            else if (slice.key === 'WFH') setFocus('wfh-heavy');
+            else if (slice.key === 'WFO') setFocus('wfo-baseline');
+            else setFocus('trend');
+          }}
+        />
+        <DonutCard
+          title="Workforce State"
+          slices={charts?.workforceState || []}
+          colors={['#4db88a', '#f59e0b', '#ef7f7f']}
+          onSliceClick={(slice) => {
+            if (slice.key === 'LEAVE') setFocus('high-leave');
+            else if (slice.key === 'PENDING') setFocus('trend');
+            else setFocus('wfo-baseline');
+          }}
+        />
+        <DonutCard
+          title="Project Share"
+          slices={charts?.projectShare || []}
+          colors={['#1b73dd', '#0eb39b', '#7f82f7', '#f59e0b', '#d5658f', '#94a3b8']}
+          onSliceClick={() => setFocus('finance')}
+        />
+      </div>
+
+      <p className="muted" style={{ marginTop: 8 }}>
+        Data generated at: {charts?.generatedAt ? new Date(charts.generatedAt).toLocaleString() : '-'}
+      </p>
+
+      <div className="card table-card" style={{ marginTop: 14 }} ref={trendRef}>
+        <h3 className="analytics-section-title">Attendance Trend</h3>
+        <div className="analytics-legend">
+          <span>
+            <i className="seg-wfo" />
+            WFO
+          </span>
+          <span>
+            <i className="seg-wfh" />
+            WFH
+          </span>
+          <span>
+            <i className="seg-leave" />
+            Leave
+          </span>
+          <span>
+            <i className="seg-halfday" />
+            Half Day
+          </span>
+        </div>
+        {trendRows.length ? (
+          <div className="analytics-trend-list">
+            {trendRows.map((row) => {
+              const total = row.wfoCount + row.wfhCount + row.leaveCount + row.halfDayCount;
+              const wfoWidth = total > 0 ? (row.wfoCount / total) * 100 : 0;
+              const wfhWidth = total > 0 ? (row.wfhCount / total) * 100 : 0;
+              const leaveWidth = total > 0 ? (row.leaveCount / total) * 100 : 0;
+              const halfDayWidth = total > 0 ? (row.halfDayCount / total) * 100 : 0;
+              return (
+                <div key={row.dateYmd} className="analytics-trend-row">
+                  <span className="analytics-trend-date">{row.dateYmd}</span>
+                  <div className="analytics-trend-bar">
+                    <span className="seg-wfo" style={{ width: `${wfoWidth}%` }} />
+                    <span className="seg-wfh" style={{ width: `${wfhWidth}%` }} />
+                    <span className="seg-leave" style={{ width: `${leaveWidth}%` }} />
+                    <span className="seg-halfday" style={{ width: `${halfDayWidth}%` }} />
+                  </div>
+                  <span className="analytics-trend-meta">
+                    WFO {row.wfoCount} | WFH {row.wfhCount} | Leave {row.leaveCount} | Half {row.halfDayCount}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          !loading && <p>No trend data found for selected period.</p>
+        )}
+      </div>
+
+      <div className="grid-cards" style={{ marginTop: 14 }}>
+        <div className="card table-card" ref={highLeaveRef}>
+          <h3 className="analytics-section-title">HR: High Leave Employees</h3>
+          {hrInsights?.highLeaveEmployees.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>Email</th>
+                  <th>Leave Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hrInsights.highLeaveEmployees.map((row) => (
+                  <tr key={row.slackUserId}>
+                    <td>{row.displayName || row.slackUserId}</td>
+                    <td>{row.email || '-'}</td>
+                    <td>{row.leaveDays}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            !loading && <p>No employees crossed leave threshold in this period.</p>
+          )}
+        </div>
+
+        <div className="card table-card" ref={wfhHeavyRef}>
+          <h3 className="analytics-section-title">HR: WFH-heavy Employees</h3>
+          {hrInsights?.wfhHeavyEmployees.length ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>Employee</th>
+                  <th>WFH Days</th>
+                  <th>Present Days</th>
+                  <th>WFH Ratio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hrInsights.wfhHeavyEmployees.map((row) => (
+                  <tr key={row.slackUserId}>
+                    <td>{row.displayName || row.slackUserId}</td>
+                    <td>{row.wfhDays}</td>
+                    <td>{row.presentDays}</td>
+                    <td>{formatValue(row.wfhRatioPct)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            !loading && <p>No WFH-heavy employees in selected period.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="card table-card" style={{ marginTop: 14 }} ref={baselineRef}>
+        <h3 className="analytics-section-title">HR: WFO Baseline (3 Days/Week)</h3>
+        {hrInsights?.wfoBaseline.length ? (
           <table>
             <thead>
               <tr>
-                <th>Project</th>
                 <th>Employee</th>
                 <th>Email</th>
-                <th>Slack ID</th>
-                <th>Days Worked</th>
+                <th>WFO Days ({localRange.from} to {localRange.to})</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={`${row.projectName}:${row.slackUserId}`}>
-                  <td>{row.projectName}</td>
+              {hrInsights.wfoBaseline.map((row) => (
+                <tr key={row.slackUserId}>
                   <td>{row.displayName || row.slackUserId}</td>
                   <td>{row.email || '-'}</td>
-                  <td>{row.slackUserId}</td>
-                  <td>{formatDayValue(row.daysWorked)}</td>
+                  <td>{row.wfoDays}</td>
+                  <td>
+                    <span className={`pill ${row.meetsBaseline ? 'on' : 'off'}`}>
+                      {row.meetsBaseline ? 'Meets Baseline' : 'Below Baseline'}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : (
-          !query.isLoading && <p>No analytics data found for this month.</p>
+          !loading && <p>No baseline rows available for selected period.</p>
         )}
       </div>
 
-      <div className="grid-cards" style={{ marginTop: 14 }}>
-        <div className="card table-card">
-          <h3>Employee Summary</h3>
-          {employeeSummaryQuery.isLoading ? <p>Loading employee summary...</p> : null}
-          {employeeRows.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Email</th>
-                  <th>Active Days</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employeeRows.map((row) => (
-                  <tr key={row.slackUserId}>
-                    <td>{row.displayName || row.slackUserId}</td>
-                    <td>{row.email || '-'}</td>
-                    <td>{formatDayValue(row.activeDays)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            !employeeSummaryQuery.isLoading && <p>No employee summary rows.</p>
-          )}
-        </div>
-
-        <div className="card table-card">
-          <h3>Project Summary</h3>
-          {projectSummaryQuery.isLoading ? <p>Loading project summary...</p> : null}
-          {projectRows.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Project</th>
-                  <th>Active Days</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projectRows.map((row) => (
-                  <tr key={row.projectName}>
-                    <td>
-                      <button
-                        type="button"
-                        className="link-btn"
-                        onClick={() => setDrillProject((prev) => (prev === row.projectName ? null : row.projectName))}
-                      >
-                        {row.projectName}
-                      </button>
-                    </td>
-                    <td>{formatDayValue(row.activeDays)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            !projectSummaryQuery.isLoading && <p>No project summary rows.</p>
-          )}
-        </div>
+      <div className="card table-card" style={{ marginTop: 14 }} ref={financeRef}>
+        <h3 className="analytics-section-title">Finance: Project Contribution</h3>
+        {financeRows.length ? (
+          <div className="analytics-project-bars">
+            {financeRows.map((row) => (
+              <div key={row.projectName} className="analytics-project-row">
+                <div className="analytics-project-label">{row.projectName}</div>
+                <div className="analytics-project-track">
+                  <div className="analytics-project-fill" style={{ width: `${row.sharePct}%` }} />
+                </div>
+                <div className="analytics-project-value">
+                  {formatValue(row.activeDays)} days ({formatValue(row.sharePct)}%)
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          !loading && <p>No project contribution data found.</p>
+        )}
       </div>
-
-      {drillProject ? (
-        <div className="card table-card" style={{ marginTop: 14 }}>
-          <h3>Project Users - {drillProject}</h3>
-          {projectUsersQuery.isLoading ? <p>Loading project users...</p> : null}
-          {projectUsersQuery.data?.rows?.length ? (
-            <table>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Email</th>
-                  <th>Slack ID</th>
-                  <th>Days Worked</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projectUsersQuery.data.rows.map((row) => (
-                  <tr key={`${row.projectName}:${row.slackUserId}`}>
-                    <td>{row.displayName || row.slackUserId}</td>
-                    <td>{row.email || '-'}</td>
-                    <td>{row.slackUserId}</td>
-                    <td>{formatDayValue(row.daysWorked)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            !projectUsersQuery.isLoading && <p>No users found for this project in selected period.</p>
-          )}
-        </div>
-      ) : null}
     </section>
   );
 }
